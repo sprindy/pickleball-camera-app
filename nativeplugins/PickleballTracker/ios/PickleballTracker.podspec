@@ -8,6 +8,6 @@ Pod::Spec.new do |s|
   s.platform = :ios, '14.0'
   s.source = { :path => '.' }
   s.source_files = 'Sources/**/*.{h,m}'
-  s.frameworks = ['AVFoundation', 'Vision', 'UIKit', 'CoreGraphics', 'CoreMedia', 'CoreVideo', 'QuartzCore']
+  s.frameworks = ['AVFoundation', 'Vision', 'Photos', 'UIKit', 'CoreGraphics', 'CoreMedia', 'CoreVideo', 'QuartzCore']
   s.requires_arc = true
 end

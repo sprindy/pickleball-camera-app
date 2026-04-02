@@ -19,6 +19,7 @@
 		C00000100000000000000001 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000160000000000000001 /* CoreVideo.framework */; };
 		C00000110000000000000001 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000170000000000000001 /* CoreGraphics.framework */; };
 		C00000120000000000000001 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000180000000000000001 /* QuartzCore.framework */; };
+		C00000130000000000000001 /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000190000000000000001 /* Photos.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 		B00000160000000000000001 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
 		B00000170000000000000001 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		B00000180000000000000001 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		B00000190000000000000001 /* Photos.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Photos.framework; path = System/Library/Frameworks/Photos.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +56,7 @@
 				C00000100000000000000001 /* CoreVideo.framework in Frameworks */,
 				C00000110000000000000001 /* CoreGraphics.framework in Frameworks */,
 				C00000120000000000000001 /* QuartzCore.framework in Frameworks */,
+				C00000130000000000000001 /* Photos.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -88,6 +91,7 @@
 				B00000160000000000000001 /* CoreVideo.framework */,
 				B00000170000000000000001 /* CoreGraphics.framework */,
 				B00000180000000000000001 /* QuartzCore.framework */,
+				B00000190000000000000001 /* Photos.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";

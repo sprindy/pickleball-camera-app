@@ -15,7 +15,8 @@
         "privacyDescription": {
           "NSCameraUsageDescription": "Camera is required to capture pickleball photos and videos.",
           "NSMicrophoneUsageDescription": "Microphone is required to record video audio.",
-          "NSPhotoLibraryAddUsageDescription": "Photo library access is required to save captured media."
+          "NSPhotoLibraryAddUsageDescription": "Photo library access is required to save captured media.",
+          "NSPhotoLibraryUsageDescription": "Photo library access is required to save captured media."
         }
       }
     },

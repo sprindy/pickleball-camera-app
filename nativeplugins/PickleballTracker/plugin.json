@@ -9,6 +9,7 @@
       "frameworks": [
         "AVFoundation",
         "Vision",
+        "Photos",
         "UIKit",
         "CoreGraphics",
         "CoreMedia",

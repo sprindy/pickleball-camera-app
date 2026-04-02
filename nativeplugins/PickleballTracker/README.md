@@ -8,7 +8,8 @@ Native iOS uni-app module providing:
 - Real-time pickleball detection/tracking while recording (`VNDetectTrajectoriesRequest`)
 - Live yellow trajectory overlay (`#FFD400`, width `5`, round joins/caps, last `30` points)
 - Export compositing via `AVVideoComposition` to produce `video_trail_<timestamp>.mp4`
-- Raw-video fallback path when no ball is detected
+- Photos album save by default for captured photos and finished videos
+- Raw-video fallback path when no ball is detected or overlay export fails
 
 Minimum iOS target: `14.0`.
 

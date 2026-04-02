@@ -6,10 +6,22 @@
       <text class="status-text">{{ statusText }}</text>
     </view>
 
-    <view class="controls">
-      <button class="capture-btn" :disabled="!isReady || !isIOS || busy" @click="onTakePhoto">PHOTO</button>
-      <button :class="['record-btn', isRecording ? 'active' : '']" :disabled="!isReady || !isIOS || busy" @click="onToggleRecord">
-        {{ isRecording ? 'STOP' : 'REC' }}
+    <view class="bottom-controls">
+      <view class="mode-selector">
+        <text :class="['mode-item', mode === 'PHOTO' ? 'active' : '']" @click="setMode('PHOTO')">PHOTO</text>
+        <text :class="['mode-item', mode === 'VIDEO' ? 'active' : '']" @click="setMode('VIDEO')">VIDEO</text>
+      </view>
+
+      <button
+        class="capture-button"
+        :class="[
+          mode === 'VIDEO' ? 'video-mode' : 'photo-mode',
+          isRecording ? 'recording' : ''
+        ]"
+        :disabled="!isReady || !isIOS || busy"
+        @click="onCapture"
+      >
+        <view class="capture-inner"></view>
       </button>
     </view>
   </view>
@@ -21,11 +33,13 @@ import bridge from '@/utils/nativeBridge'
 export default {
   data() {
     return {
+      mode: 'PHOTO',
       statusText: 'Initializing...',
       isReady: false,
       isIOS: false,
       busy: false,
       isRecording: false,
+      trackingDetected: false,
       currentSessionId: '',
       lastRawVideoPath: '',
       unsubscribeTracking: null,
@@ -66,11 +80,10 @@ export default {
           if (!this.isRecording) {
             return
           }
-          if (payload && payload.detected) {
-            this.statusText = `Recording • tracking (${Number(payload.confidence || 0).toFixed(2)})`
-          } else {
-            this.statusText = 'Recording • no ball'
-          }
+
+          const detected = Boolean(payload && payload.detected)
+          this.trackingDetected = detected
+          this.statusText = detected ? 'Recording - Tracking ball...' : 'Recording - Searching...'
         })
 
         this.unsubscribeRecordingFinished = bridge.onRecordingFinished((payload) => {
@@ -82,7 +95,7 @@ export default {
         })
 
         this.isReady = true
-        this.statusText = 'Camera ready'
+        this.statusText = 'Ready'
       } catch (error) {
         this.statusText = `Init failed: ${error.message || error}`
       }
@@ -100,11 +113,8 @@ export default {
     },
 
     async ensurePermissions() {
-      const permissions = ['scope.camera', 'scope.record']
+      const permissions = ['scope.camera', 'scope.record', 'scope.writePhotosAlbum']
       for (const scope of permissions) {
-        // #ifdef APP-PLUS
-        // uni.authorize can reject if already denied; we keep the error to surface exact permission issue.
-        // #endif
         await new Promise((resolve, reject) => {
           uni.authorize({
             scope,
@@ -115,21 +125,45 @@ export default {
       }
     },
 
-    async onTakePhoto() {
+    setMode(nextMode) {
+      if (this.isRecording) {
+        return
+      }
+      this.mode = nextMode
+      this.statusText = nextMode === 'PHOTO' ? 'Ready' : 'Ready to record'
+    },
+
+    async onCapture() {
       if (!this.isReady || !this.isIOS || this.busy) {
         return
       }
 
+      if (this.mode === 'PHOTO') {
+        await this.capturePhoto()
+        return
+      }
+
+      if (this.isRecording) {
+        await this.stopRecord()
+      } else {
+        await this.startRecord()
+      }
+    },
+
+    async capturePhoto() {
       try {
         this.busy = true
         this.statusText = 'Capturing photo...'
         const result = await bridge.takePhoto()
         const photoPath = result.photoFilePath || ''
-        this.statusText = 'Photo saved'
+        const saveWarning = result.saveWarning || ''
 
-        uni.navigateTo({
-          url: `/pages/review/index?type=photo&path=${encodeURIComponent(photoPath)}`
-        })
+        this.statusText = saveWarning ? `Saved locally: ${saveWarning}` : 'Photo saved'
+        if (photoPath) {
+          uni.navigateTo({
+            url: `/pages/review/index?type=photo&path=${encodeURIComponent(photoPath)}`
+          })
+        }
       } catch (error) {
         this.statusText = `Photo failed: ${error.message || error}`
       } finally {
@@ -137,27 +171,16 @@ export default {
       }
     },
 
-    async onToggleRecord() {
-      if (!this.isReady || !this.isIOS || this.busy) {
-        return
-      }
-
-      if (!this.isRecording) {
-        await this.startRecord()
-      } else {
-        await this.stopRecord()
-      }
-    },
-
     async startRecord() {
       try {
         this.busy = true
+        this.trackingDetected = false
         this.statusText = 'Starting recording...'
         const result = await bridge.startRecording({ trackBall: true })
         this.currentSessionId = result.sessionId || ''
         this.lastRawVideoPath = result.videoFilePath || ''
         this.isRecording = true
-        this.statusText = 'Recording • waiting for ball'
+        this.statusText = 'Recording - Searching...'
       } catch (error) {
         this.statusText = `Record failed: ${error.message || error}`
       } finally {
@@ -176,17 +199,23 @@ export default {
         this.currentSessionId = stopResult.sessionId || this.currentSessionId
         this.lastRawVideoPath = stopResult.videoFilePath || this.lastRawVideoPath
 
-        this.statusText = 'Exporting trail overlay...'
+        this.statusText = 'Processing video...'
         const exportResult = await bridge.exportVideoWithOverlay(this.currentSessionId)
         outputPath = exportResult.outputVideoFilePath || this.lastRawVideoPath
-        this.statusText = exportResult.hasTrail ? 'Recording finished with trail' : 'Recording finished (no ball detected)'
+
+        if (exportResult.hasTrail) {
+          this.statusText = exportResult.warning || 'Saved with trajectory'
+        } else {
+          this.statusText = exportResult.warning || 'Saved video (no ball detected)'
+        }
       } catch (error) {
         outputPath = (stopResult && stopResult.videoFilePath) || this.lastRawVideoPath
         this.statusText = outputPath
-          ? `Export skipped, using raw video: ${error.message || error}`
+          ? `Saved raw video: ${error.message || error}`
           : `Stop failed: ${error.message || error}`
       } finally {
         this.isRecording = false
+        this.trackingDetected = false
         this.busy = false
       }
 
@@ -206,63 +235,101 @@ export default {
   width: 100%;
   height: 100vh;
   background: #000;
+  overflow: hidden;
 }
 
 .preview {
   position: absolute;
   inset: 0;
-  background: #111;
+  background: #000;
 }
 
 .status-bar {
   position: absolute;
-  top: 48rpx;
+  top: 56rpx;
   left: 24rpx;
   right: 24rpx;
-  z-index: 9;
+  z-index: 20;
 }
 
 .status-text {
   color: #fff;
-  font-size: 28rpx;
+  font-size: 26rpx;
+  background: rgba(0, 0, 0, 0.38);
+  padding: 10rpx 14rpx;
+  border-radius: 12rpx;
 }
 
-.controls {
+.bottom-controls {
   position: absolute;
-  bottom: 56rpx;
   left: 0;
   right: 0;
-  z-index: 9;
+  bottom: 34rpx;
+  z-index: 20;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
   gap: 24rpx;
 }
 
-.capture-btn,
-.record-btn {
-  width: 180rpx;
-  height: 88rpx;
-  border-radius: 44rpx;
-  border: none;
-  font-size: 28rpx;
-  color: #fff;
+.mode-selector {
+  min-width: 300rpx;
+  padding: 10rpx;
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  gap: 12rpx;
 }
 
-.capture-btn {
-  background: #2f2f2f;
+.mode-item {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 24rpx;
+  letter-spacing: 1rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
 }
 
-.record-btn {
-  background: #7a1212;
+.mode-item.active {
+  color: #ffd400;
+  background: rgba(255, 212, 0, 0.14);
 }
 
-.record-btn.active {
-  background: #d12d2d;
+.capture-button {
+  width: 152rpx;
+  height: 152rpx;
+  border-radius: 50%;
+  border: 10rpx solid #fff;
+  background: rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
-.capture-btn[disabled],
-.record-btn[disabled] {
-  opacity: 0.45;
+.capture-button::after {
+  border: 0;
+}
+
+.capture-inner {
+  width: 108rpx;
+  height: 108rpx;
+  border-radius: 50%;
+  background: #fff;
+  transition: all 0.15s ease;
+}
+
+.capture-button.video-mode .capture-inner {
+  background: #ff3b30;
+}
+
+.capture-button.video-mode.recording .capture-inner {
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 14rpx;
+}
+
+.capture-button[disabled] {
+  opacity: 0.55;
 }
 </style>

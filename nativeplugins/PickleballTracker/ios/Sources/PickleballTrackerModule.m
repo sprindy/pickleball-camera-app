@@ -2,14 +2,15 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <ImageIO/ImageIO.h>
-#import <objc/message.h>
 #import <math.h>
+#import <Photos/Photos.h>
+#import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 #import <Vision/Vision.h>
 
 static NSString *const kPickleballTrackingEvent = @"PickleballTrackingUpdate";
 static NSString *const kPickleballRecordingFinishedEvent = @"PickleballRecordingFinished";
-static NSInteger const kTrailWindowSize = 30;
+static NSInteger const kTrailWindowPoints = 30;
 
 @interface PickleballTrackerModule () <AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate>
 @property (nonatomic, strong) AVCaptureSession *captureSession;
@@ -86,6 +87,7 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         if (!self) {
             return;
         }
+
         NSError *error = nil;
         if (![self ensureCaptureSessionConfigured:&error]) {
             [self replyError:[self errorMessage:error fallback:@"Failed to configure camera session"] callback:callback];
@@ -251,6 +253,7 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
 
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.liveTrailPoints removeAllObjects];
+            self.trailLayer.path = nil;
             [self refreshPreviewFrameAndOrientation];
         });
 
@@ -341,19 +344,34 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         return;
     }
 
-    NSString *rawPath = session[@"rawVideoPath"];
+    NSString *rawPath = [session[@"rawVideoPath"] isKindOfClass:[NSString class]] ? session[@"rawVideoPath"] : @"";
     if (rawPath.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:rawPath]) {
         [self replyError:@"Raw video file is missing" callback:callback];
         return;
     }
 
-    NSString *timestamp = session[@"timestamp"];
+    NSArray<NSDictionary *> *points = [session[@"points"] isKindOfClass:[NSArray class]] ? session[@"points"] : @[];
+    if (points.count == 0) {
+        [self finalizeVideoForSession:session
+                           outputPath:rawPath
+                             hasTrail:NO
+                              warning:nil
+                             callback:callback];
+        return;
+    }
+
+    NSString *timestamp = [session[@"timestamp"] isKindOfClass:[NSString class]] ? session[@"timestamp"] : @"";
     if (timestamp.length == 0) {
         timestamp = [self timestampString];
     }
+
     NSURL *trailURL = [self mediaFileURLWithName:[NSString stringWithFormat:@"video_trail_%@.mp4", timestamp]];
     if (!trailURL) {
-        [self replyError:@"Unable to allocate export path" callback:callback];
+        [self finalizeVideoForSession:session
+                           outputPath:rawPath
+                             hasTrail:NO
+                              warning:@"Unable to allocate export path. Kept raw recording."
+                             callback:callback];
         return;
     }
     [[NSFileManager defaultManager] removeItemAtURL:trailURL error:nil];
@@ -363,22 +381,33 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
 
     AVAssetTrack *videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
     if (!videoTrack) {
-        [self replyError:@"Video track not found" callback:callback];
+        [self finalizeVideoForSession:session
+                           outputPath:rawPath
+                             hasTrail:NO
+                              warning:@"Video track missing. Kept raw recording."
+                             callback:callback];
         return;
     }
 
     AVMutableComposition *composition = [AVMutableComposition composition];
-    AVMutableCompositionTrack *compositionVideoTrack = [composition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
+    AVMutableCompositionTrack *compositionVideoTrack = [composition addMutableTrackWithMediaType:AVMediaTypeVideo
+                                                                                  preferredTrackID:kCMPersistentTrackID_Invalid];
     NSError *insertError = nil;
     CMTimeRange fullRange = CMTimeRangeMake(kCMTimeZero, asset.duration);
     if (![compositionVideoTrack insertTimeRange:fullRange ofTrack:videoTrack atTime:kCMTimeZero error:&insertError]) {
-        [self replyError:[self errorMessage:insertError fallback:@"Unable to build export composition"] callback:callback];
+        NSString *warning = [NSString stringWithFormat:@"Export composition failed: %@", [self errorMessage:insertError fallback:@"unknown error"]];
+        [self finalizeVideoForSession:session
+                           outputPath:rawPath
+                             hasTrail:NO
+                              warning:warning
+                             callback:callback];
         return;
     }
 
     AVAssetTrack *audioTrack = [[asset tracksWithMediaType:AVMediaTypeAudio] firstObject];
     if (audioTrack) {
-        AVMutableCompositionTrack *compositionAudioTrack = [composition addMutableTrackWithMediaType:AVMediaTypeAudio preferredTrackID:kCMPersistentTrackID_Invalid];
+        AVMutableCompositionTrack *compositionAudioTrack = [composition addMutableTrackWithMediaType:AVMediaTypeAudio
+                                                                                      preferredTrackID:kCMPersistentTrackID_Invalid];
         [compositionAudioTrack insertTimeRange:fullRange ofTrack:audioTrack atTime:kCMTimeZero error:nil];
     }
 
@@ -390,7 +419,8 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
     AVMutableVideoCompositionInstruction *instruction = [AVMutableVideoCompositionInstruction videoCompositionInstruction];
     instruction.timeRange = fullRange;
 
-    AVMutableVideoCompositionLayerInstruction *layerInstruction = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:compositionVideoTrack];
+    AVMutableVideoCompositionLayerInstruction *layerInstruction =
+        [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:compositionVideoTrack];
     [layerInstruction setTransform:preferredTransform atTime:kCMTimeZero];
     instruction.layerInstructions = @[layerInstruction];
 
@@ -399,14 +429,19 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
     videoComposition.frameDuration = CMTimeMake(1, 30);
     videoComposition.renderSize = renderSize;
 
-    NSArray<NSDictionary *> *points = [session[@"points"] isKindOfClass:[NSArray class]] ? session[@"points"] : @[];
-    if (points.count > 0) {
-        [self attachTrailAnimationForPoints:points duration:CMTimeGetSeconds(asset.duration) renderSize:renderSize toVideoComposition:videoComposition];
-    }
+    [self attachTrailAnimationForPoints:points
+                               duration:CMTimeGetSeconds(asset.duration)
+                             renderSize:renderSize
+                     toVideoComposition:videoComposition];
 
-    AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:composition presetName:AVAssetExportPresetHighestQuality];
+    AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:composition
+                                                                             presetName:AVAssetExportPresetHighestQuality];
     if (!exportSession) {
-        [self replyError:@"Unable to start export session" callback:callback];
+        [self finalizeVideoForSession:session
+                           outputPath:rawPath
+                             hasTrail:NO
+                              warning:@"Unable to start export. Kept raw recording."
+                             callback:callback];
         return;
     }
 
@@ -425,24 +460,37 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         switch (exportSession.status) {
             case AVAssetExportSessionStatusCompleted: {
                 session[@"trailVideoPath"] = trailURL.path ?: @"";
-                [self replySuccess:@{
-                    @"sessionId": session[@"sessionId"] ?: @"",
-                    @"outputVideoFilePath": trailURL.path ?: @"",
-                    @"videoFilePath": session[@"rawVideoPath"] ?: @"",
-                    @"hasTrail": @(points.count > 0)
-                } callback:callback];
+                [self finalizeVideoForSession:session
+                                   outputPath:trailURL.path ?: rawPath
+                                     hasTrail:YES
+                                      warning:nil
+                                     callback:callback];
                 break;
             }
             case AVAssetExportSessionStatusFailed: {
-                [self replyError:[self errorMessage:exportSession.error fallback:@"Video export failed"] callback:callback];
+                NSString *warning = [NSString stringWithFormat:@"Overlay export failed: %@. Kept raw recording.",
+                                     [self errorMessage:exportSession.error fallback:@"unknown error"]];
+                [self finalizeVideoForSession:session
+                                   outputPath:rawPath
+                                     hasTrail:NO
+                                      warning:warning
+                                     callback:callback];
                 break;
             }
             case AVAssetExportSessionStatusCancelled: {
-                [self replyError:@"Video export cancelled" callback:callback];
+                [self finalizeVideoForSession:session
+                                   outputPath:rawPath
+                                     hasTrail:NO
+                                      warning:@"Overlay export cancelled. Kept raw recording."
+                                     callback:callback];
                 break;
             }
             default: {
-                [self replyError:@"Video export did not complete" callback:callback];
+                [self finalizeVideoForSession:session
+                                   outputPath:rawPath
+                                     hasTrail:NO
+                                      warning:@"Overlay export did not complete. Kept raw recording."
+                                     callback:callback];
                 break;
             }
         }
@@ -482,11 +530,24 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         return;
     }
 
-    [self replySuccess:@{ @"photoFilePath": photoURL.path ?: @"" } callback:callback];
+    [self saveFileToPhotosAtPath:photoURL.path
+                         isVideo:NO
+                      completion:^(BOOL saved, NSString *warning) {
+        NSMutableDictionary *payload = [@{
+            @"photoFilePath": photoURL.path ?: @"",
+            @"savedToPhotos": @(saved)
+        } mutableCopy];
+
+        if (warning.length > 0) {
+            payload[@"saveWarning"] = warning;
+        }
+
+        [self replySuccess:payload callback:callback];
+    }];
 }
 
 - (void)captureOutput:(AVCaptureFileOutput *)output didStartRecordingToOutputFileAtURL:(NSURL *)fileURL fromConnections:(NSArray<AVCaptureConnection *> *)connections {
-    // No-op: start result is returned immediately in startRecording.
+    // Start response is returned immediately from startRecording.
 }
 
 - (void)captureOutput:(AVCaptureFileOutput *)output
@@ -500,6 +561,7 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     self.activeRecordingSession = nil;
     self.trackBall = NO;
     self.hasRecordingStartTime = NO;
+    self.isProcessingVision = NO;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.liveTrailPoints removeAllObjects];
@@ -534,7 +596,9 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     }
 }
 
-- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+- (void)captureOutput:(AVCaptureOutput *)output
+didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+       fromConnection:(AVCaptureConnection *)connection {
     if (!self.movieOutput.isRecording || !self.trackBall || !self.activeRecordingSession) {
         return;
     }
@@ -619,7 +683,9 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     AVCaptureDevice *rearCamera = [self rearCameraDevice];
     if (!rearCamera) {
         if (error) {
-            *error = [NSError errorWithDomain:@"PickleballTracker" code:-100 userInfo:@{NSLocalizedDescriptionKey: @"Rear camera not available"}];
+            *error = [NSError errorWithDomain:@"PickleballTracker"
+                                         code:-100
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Rear camera not available"}];
         }
         [session commitConfiguration];
         return NO;
@@ -632,7 +698,9 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
         AVCaptureDeviceInput *videoInput = [AVCaptureDeviceInput deviceInputWithDevice:rearCamera error:&videoError];
         if (!videoInput || videoError) {
             if (error) {
-                *error = videoError ?: [NSError errorWithDomain:@"PickleballTracker" code:-101 userInfo:@{NSLocalizedDescriptionKey: @"Unable to create rear camera input"}];
+                *error = videoError ?: [NSError errorWithDomain:@"PickleballTracker"
+                                                            code:-101
+                                                        userInfo:@{NSLocalizedDescriptionKey: @"Unable to create rear camera input"}];
             }
             [session commitConfiguration];
             return NO;
@@ -811,8 +879,8 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
         CGPoint viewPoint = CGPointMake(normalizedPoint.x * CGRectGetWidth(hostView.bounds),
                                         (1.0 - normalizedPoint.y) * CGRectGetHeight(hostView.bounds));
         [self.liveTrailPoints addObject:[NSValue valueWithCGPoint:viewPoint]];
-        if (self.liveTrailPoints.count > kTrailWindowSize) {
-            NSRange range = NSMakeRange(0, self.liveTrailPoints.count - kTrailWindowSize);
+        if (self.liveTrailPoints.count > kTrailWindowPoints) {
+            NSRange range = NSMakeRange(0, self.liveTrailPoints.count - kTrailWindowPoints);
             [self.liveTrailPoints removeObjectsInRange:range];
         }
 
@@ -898,13 +966,15 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
 
     [trailLayer addAnimation:pathAnimation forKey:@"pickleballTrailPath"];
 
-    videoComposition.animationTool = [AVVideoCompositionCoreAnimationTool videoCompositionCoreAnimationToolWithPostProcessingAsVideoLayer:videoLayer inLayer:parentLayer];
+    videoComposition.animationTool = [AVVideoCompositionCoreAnimationTool
+        videoCompositionCoreAnimationToolWithPostProcessingAsVideoLayer:videoLayer
+                                                                 inLayer:parentLayer];
 }
 
 - (CGPathRef)copiedPathForPointWindow:(NSArray<NSDictionary *> *)points
                             upToIndex:(NSInteger)index
                            renderSize:(CGSize)renderSize CF_RETURNS_RETAINED {
-    NSInteger start = MAX(0, index - (kTrailWindowSize - 1));
+    NSInteger start = MAX(0, index - (kTrailWindowPoints - 1));
     UIBezierPath *path = [UIBezierPath bezierPath];
 
     BOOL moved = NO;
@@ -923,6 +993,133 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     }
 
     return CGPathCreateCopy(path.CGPath);
+}
+
+- (void)finalizeVideoForSession:(NSMutableDictionary *)session
+                     outputPath:(NSString *)outputPath
+                       hasTrail:(BOOL)hasTrail
+                        warning:(NSString *)warning
+                       callback:(UniModuleKeepAliveCallback)callback {
+    NSString *sessionId = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : @"";
+    NSString *rawPath = [session[@"rawVideoPath"] isKindOfClass:[NSString class]] ? session[@"rawVideoPath"] : @"";
+
+    if (outputPath.length == 0) {
+        outputPath = rawPath;
+    }
+
+    [self saveFileToPhotosAtPath:outputPath
+                         isVideo:YES
+                      completion:^(BOOL saved, NSString *saveWarning) {
+        NSMutableDictionary *payload = [@{
+            @"sessionId": sessionId,
+            @"outputVideoFilePath": outputPath ?: @"",
+            @"videoFilePath": rawPath ?: @"",
+            @"hasTrail": @(hasTrail),
+            @"savedToPhotos": @(saved),
+            @"usedRawFallback": @(!hasTrail)
+        } mutableCopy];
+
+        NSString *combinedWarning = [self combinedWarning:warning with:saveWarning];
+        if (combinedWarning.length > 0) {
+            payload[@"warning"] = combinedWarning;
+        }
+
+        [self replySuccess:payload callback:callback];
+    }];
+}
+
+- (void)saveFileToPhotosAtPath:(NSString *)path
+                       isVideo:(BOOL)isVideo
+                    completion:(void (^)(BOOL saved, NSString *warning))completion {
+    if (path.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        if (completion) {
+            completion(NO, @"Local media file is missing.");
+        }
+        return;
+    }
+
+    [self ensurePhotoLibraryAuthorization:^(BOOL granted, NSString *reason) {
+        if (!granted) {
+            if (completion) {
+                completion(NO, reason.length > 0 ? reason : @"Photo Library permission denied.");
+            }
+            return;
+        }
+
+        NSURL *fileURL = [NSURL fileURLWithPath:path];
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            if (isVideo) {
+                [PHAssetCreationRequest creationRequestForAssetFromVideoAtFileURL:fileURL];
+            } else {
+                [PHAssetCreationRequest creationRequestForAssetFromImageAtFileURL:fileURL];
+            }
+        } completionHandler:^(BOOL success, NSError * _Nullable error) {
+            NSString *warning = nil;
+            if (!success) {
+                warning = [self errorMessage:error fallback:@"Could not save to Photos."];
+            }
+            if (completion) {
+                completion(success, warning);
+            }
+        }];
+    }];
+}
+
+- (void)ensurePhotoLibraryAuthorization:(void (^)(BOOL granted, NSString *reason))completion {
+    if (@available(iOS 14.0, *)) {
+        PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
+        if (status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited) {
+            completion(YES, nil);
+            return;
+        }
+        if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
+            completion(NO, @"Photo Library access denied. Media kept locally.");
+            return;
+        }
+
+        [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus newStatus) {
+            BOOL granted = (newStatus == PHAuthorizationStatusAuthorized || newStatus == PHAuthorizationStatusLimited);
+            NSString *reason = granted ? nil : @"Photo Library access denied. Media kept locally.";
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(granted, reason);
+            });
+        }];
+        return;
+    }
+
+    PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatus];
+    if (status == PHAuthorizationStatusAuthorized) {
+        completion(YES, nil);
+        return;
+    }
+    if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
+        completion(NO, @"Photo Library access denied. Media kept locally.");
+        return;
+    }
+
+    [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus newStatus) {
+        BOOL granted = (newStatus == PHAuthorizationStatusAuthorized);
+        NSString *reason = granted ? nil : @"Photo Library access denied. Media kept locally.";
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(granted, reason);
+        });
+    }];
+}
+
+- (NSString *)combinedWarning:(NSString *)w1 with:(NSString *)w2 {
+    NSString *a = [w1 isKindOfClass:[NSString class]] ? w1 : @"";
+    NSString *b = [w2 isKindOfClass:[NSString class]] ? w2 : @"";
+
+    if (a.length > 0 && b.length > 0) {
+        return [NSString stringWithFormat:@"%@ %@", a, b];
+    }
+    if (a.length > 0) {
+        return a;
+    }
+    if (b.length > 0) {
+        return b;
+    }
+    return @"";
 }
 
 - (UIColor *)trailColor {
@@ -944,17 +1141,23 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
 }
 
 - (NSURL *)mediaDirectoryURL:(NSError **)error {
-    NSURL *documentsURL = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] firstObject];
+    NSURL *documentsURL = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory
+                                                                   inDomains:NSUserDomainMask] firstObject];
     if (!documentsURL) {
         if (error) {
-            *error = [NSError errorWithDomain:@"PickleballTracker" code:-200 userInfo:@{NSLocalizedDescriptionKey: @"Documents directory unavailable"}];
+            *error = [NSError errorWithDomain:@"PickleballTracker"
+                                         code:-200
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Documents directory unavailable"}];
         }
         return nil;
     }
 
     NSURL *mediaDirectory = [documentsURL URLByAppendingPathComponent:@"pickleball_media" isDirectory:YES];
     if (![[NSFileManager defaultManager] fileExistsAtPath:mediaDirectory.path]) {
-        if (![[NSFileManager defaultManager] createDirectoryAtURL:mediaDirectory withIntermediateDirectories:YES attributes:nil error:error]) {
+        if (![[NSFileManager defaultManager] createDirectoryAtURL:mediaDirectory
+                                       withIntermediateDirectories:YES
+                                                        attributes:nil
+                                                             error:error]) {
             return nil;
         }
     }
@@ -1010,9 +1213,10 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
 }
 
 - (AVCaptureDevice *)rearCameraDevice {
-    AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInWideAngleCamera]
-                                                                                                        mediaType:AVMediaTypeVideo
-                                                                                                         position:AVCaptureDevicePositionBack];
+    AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession
+        discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInWideAngleCamera]
+                              mediaType:AVMediaTypeVideo
+                               position:AVCaptureDevicePositionBack];
     return discovery.devices.firstObject;
 }
 
@@ -1045,7 +1249,9 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     }
     self.orientationObserverInstalled = NO;
 
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIDeviceOrientationDidChangeNotification
+                                                  object:nil];
     [[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
 }
 
@@ -1093,15 +1299,18 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
         return;
     }
 
+    NSDictionary *safePayload = payload ?: @{};
     dispatch_async(dispatch_get_main_queue(), ^{
         id instance = [self currentUniInstance];
         SEL eventSelector = NSSelectorFromString(@"fireGlobalEvent:params:");
         if (instance && [instance respondsToSelector:eventSelector]) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            [instance performSelector:eventSelector withObject:eventName withObject:(payload ?: @{})];
+            [instance performSelector:eventSelector withObject:eventName withObject:safePayload];
 #pragma clang diagnostic pop
         }
+
+        [[NSNotificationCenter defaultCenter] postNotificationName:eventName object:nil userInfo:safePayload];
     });
 }
 

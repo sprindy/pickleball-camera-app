@@ -16,6 +16,7 @@
       "frameworks": [
         "AVFoundation.framework",
         "Vision.framework",
+        "Photos.framework",
         "UIKit.framework",
         "CoreMedia.framework",
         "CoreVideo.framework",
