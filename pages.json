@@ -1,0 +1,26 @@
+{
+  "pages": [
+    {
+      "path": "pages/camera/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000"
+      }
+    },
+    {
+      "path": "pages/review/index",
+      "style": {
+        "navigationBarTitleText": "Review",
+        "backgroundColor": "#000000",
+        "navigationBarTextStyle": "white",
+        "navigationBarBackgroundColor": "#000000"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "Pickleball Camera",
+    "navigationBarBackgroundColor": "#000000",
+    "backgroundColor": "#000000"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "PickleballTracker",
+  "id": "PickleballTracker",
+  "version": "1.0.0",
+  "platforms": {
+    "ios": {
+      "deploymentTarget": "14.0",
+      "class": "PickleballTrackerModule",
+      "frameworks": [
+        "AVFoundation",
+        "Vision",
+        "UIKit",
+        "CoreGraphics",
+        "CoreMedia",
+        "CoreVideo",
+        "QuartzCore"
+      ]
+    }
+  }
+}

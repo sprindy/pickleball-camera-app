@@ -1,0 +1,27 @@
+{
+  "id": "PickleballTracker",
+  "name": "PickleballTracker",
+  "version": "1.0.0",
+  "description": "Native iOS module for pickleball camera tracking and trail export",
+  "_dp_type": "nativeplugin",
+  "_dp_nativeplugin": {
+    "ios": {
+      "plugins": [
+        {
+          "type": "module",
+          "name": "PickleballTracker",
+          "class": "PickleballTrackerModule"
+        }
+      ],
+      "frameworks": [
+        "AVFoundation.framework",
+        "Vision.framework",
+        "UIKit.framework",
+        "CoreMedia.framework",
+        "CoreVideo.framework",
+        "CoreGraphics.framework",
+        "QuartzCore.framework"
+      ]
+    }
+  }
+}

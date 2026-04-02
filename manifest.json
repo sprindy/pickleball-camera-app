@@ -1,0 +1,26 @@
+{
+  "name": "PickleballCamera",
+  "appid": "__UNI__PICKLEBALLCAM",
+  "description": "iOS-only pickleball camera app",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "app-plus": {
+    "distribute": {
+      "ios": {
+        "dSYMs": false,
+        "idfa": false,
+        "capabilities": {
+          "push": false
+        },
+        "privacyDescription": {
+          "NSCameraUsageDescription": "Camera is required to capture pickleball photos and videos.",
+          "NSMicrophoneUsageDescription": "Microphone is required to record video audio.",
+          "NSPhotoLibraryAddUsageDescription": "Photo library access is required to save captured media."
+        }
+      }
+    },
+    "modules": {
+      "PickleballTracker": {}
+    }
+  }
+}
