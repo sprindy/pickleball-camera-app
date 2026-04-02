@@ -141,6 +141,9 @@ export default {
   stopRecording(payload = {}) {
     return invokeNative('stopRecording', payload)
   },
+  getRecordingStatus(payload = {}) {
+    return invokeNative('getRecordingStatus', payload)
+  },
   exportVideoWithOverlay(sessionId) {
     return invokeNative('exportVideoWithOverlay', { sessionId })
   },

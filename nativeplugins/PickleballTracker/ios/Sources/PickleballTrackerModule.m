@@ -11,6 +11,22 @@
 static NSString *const kPickleballTrackingEvent = @"PickleballTrackingUpdate";
 static NSString *const kPickleballRecordingFinishedEvent = @"PickleballRecordingFinished";
 static NSInteger const kTrailWindowPoints = 30;
+static NSTimeInterval const kTemporaryLossThreshold = 0.3;
+static NSTimeInterval const kResetLossThreshold = 1.0;
+static CGFloat const kTrackingSmoothingAlpha = 0.6;
+static CGFloat const kOutlierDistanceThreshold = 0.28;
+
+static NSString *const kRecordingStateIdle = @"idle";
+static NSString *const kRecordingStateRecording = @"recording";
+static NSString *const kRecordingStateProcessingExport = @"processing_export";
+static NSString *const kRecordingStateReviewReady = @"review_ready";
+static NSString *const kRecordingStateError = @"error";
+
+static NSString *const kTrackingStateNotStarted = @"not_started";
+static NSString *const kTrackingStateSearching = @"searching";
+static NSString *const kTrackingStateTracking = @"tracking";
+static NSString *const kTrackingStateTemporarilyLost = @"temporarily_lost";
+static NSString *const kTrackingStateLost = @"lost";
 
 @interface PickleballTrackerModule () <AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate>
 @property (nonatomic, strong) AVCaptureSession *captureSession;
@@ -43,6 +59,12 @@ static NSInteger const kTrailWindowPoints = 30;
 @property (nonatomic, assign) BOOL hasRecordingStartTime;
 @property (nonatomic, assign) Float64 recordingStartSeconds;
 @property (nonatomic, assign) NSTimeInterval lastTrackingEventTime;
+@property (nonatomic, assign) NSTimeInterval lastDetectedRelativeTime;
+@property (nonatomic, assign) NSUInteger frameIndex;
+@property (nonatomic, assign) CGPoint previousSmoothedPoint;
+@property (nonatomic, assign) BOOL hasPreviousSmoothedPoint;
+@property (nonatomic, copy) NSString *recordingState;
+@property (nonatomic, copy) NSString *trackingState;
 @end
 
 @implementation PickleballTrackerModule
@@ -53,6 +75,7 @@ UNI_EXPORT_METHOD(@selector(stopPreview:callback:))
 UNI_EXPORT_METHOD(@selector(takePhoto:callback:))
 UNI_EXPORT_METHOD(@selector(startRecording:callback:))
 UNI_EXPORT_METHOD(@selector(stopRecording:callback:))
+UNI_EXPORT_METHOD(@selector(getRecordingStatus:callback:))
 UNI_EXPORT_METHOD(@selector(onTrackingUpdate:callback:))
 UNI_EXPORT_METHOD(@selector(onRecordingFinished:callback:))
 UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
@@ -67,6 +90,11 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         _autoRotateEnabled = YES;
         _trackBall = YES;
         _lastTrackingEventTime = 0;
+        _lastDetectedRelativeTime = -1;
+        _frameIndex = 0;
+        _hasPreviousSmoothedPoint = NO;
+        _recordingState = kRecordingStateIdle;
+        _trackingState = kTrackingStateNotStarted;
     }
     return self;
 }
@@ -158,6 +186,8 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
             [self.liveTrailPoints removeAllObjects];
             self.previewLayer = nil;
             self.trailLayer = nil;
+            self.recordingState = kRecordingStateIdle;
+            self.trackingState = kTrackingStateNotStarted;
             [self replySuccess:@{ @"previewing": @NO } callback:callback];
         });
     });
@@ -234,12 +264,21 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
 
         [[NSFileManager defaultManager] removeItemAtURL:rawURL error:nil];
 
+        long long nowMs = (long long)llround([[NSDate date] timeIntervalSince1970] * 1000.0);
         NSMutableDictionary *session = [@{
+            @"id": sessionId,
             @"sessionId": sessionId,
             @"timestamp": timestamp,
+            @"videoFilePath": rawURL.path ?: @"",
             @"rawVideoPath": rawURL.path ?: @"",
+            @"outputVideoFilePath": @"",
             @"trailVideoPath": @"",
-            @"points": [NSMutableArray array]
+            @"startedAt": @(nowMs),
+            @"endedAt": @0,
+            @"videoWidth": @0,
+            @"videoHeight": @0,
+            @"fps": @30,
+            @"trackPoints": [NSMutableArray array]
         } mutableCopy];
 
         self.recordingSessions[sessionId] = session;
@@ -248,6 +287,11 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         self.hasRecordingStartTime = NO;
         self.recordingStartSeconds = 0;
         self.lastTrackingEventTime = 0;
+        self.lastDetectedRelativeTime = -1;
+        self.frameIndex = 0;
+        self.hasPreviousSmoothedPoint = NO;
+        self.recordingState = kRecordingStateRecording;
+        self.trackingState = kTrackingStateSearching;
 
         [self configureTrajectoryRequest];
 
@@ -265,7 +309,9 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         [self.movieOutput startRecordingToOutputFileURL:rawURL recordingDelegate:self];
         [self replySuccess:@{
             @"sessionId": sessionId,
-            @"videoFilePath": rawURL.path ?: @""
+            @"videoFilePath": rawURL.path ?: @"",
+            @"recordingState": self.recordingState,
+            @"trackingState": self.trackingState
         } callback:callback];
     });
 }
@@ -305,7 +351,9 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         if (!self.movieOutput.isRecording) {
             [self replySuccess:@{
                 @"sessionId": session[@"sessionId"] ?: @"",
-                @"videoFilePath": session[@"rawVideoPath"] ?: @""
+                @"videoFilePath": session[@"videoFilePath"] ?: session[@"rawVideoPath"] ?: @"",
+                @"recordingState": self.recordingState ?: kRecordingStateIdle,
+                @"trackingState": self.trackingState ?: kTrackingStateNotStarted
             } callback:callback];
             return;
         }
@@ -313,6 +361,20 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         self.pendingStopCallback = callback;
         [self.movieOutput stopRecording];
     });
+}
+
+- (void)getRecordingStatus:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback {
+    NSMutableDictionary *payload = [@{
+        @"recordingState": self.recordingState ?: kRecordingStateIdle,
+        @"trackingState": self.trackingState ?: kTrackingStateNotStarted,
+        @"isRecording": @(self.movieOutput.isRecording),
+        @"sessionId": self.activeRecordingSession[@"sessionId"] ?: @""
+    } mutableCopy];
+
+    if (self.activeRecordingSession) {
+        payload[@"session"] = [self.activeRecordingSession copy];
+    }
+    [self replySuccess:payload callback:callback];
 }
 
 - (void)onTrackingUpdate:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback {
@@ -343,14 +405,19 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
         [self replyError:@"Recording session not found" callback:callback];
         return;
     }
+    self.recordingState = kRecordingStateProcessingExport;
 
-    NSString *rawPath = [session[@"rawVideoPath"] isKindOfClass:[NSString class]] ? session[@"rawVideoPath"] : @"";
+    NSString *rawPath = [session[@"videoFilePath"] isKindOfClass:[NSString class]] ? session[@"videoFilePath"] : @"";
+    if (rawPath.length == 0) {
+        rawPath = [session[@"rawVideoPath"] isKindOfClass:[NSString class]] ? session[@"rawVideoPath"] : @"";
+    }
     if (rawPath.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:rawPath]) {
+        self.recordingState = kRecordingStateError;
         [self replyError:@"Raw video file is missing" callback:callback];
         return;
     }
 
-    NSArray<NSDictionary *> *points = [session[@"points"] isKindOfClass:[NSArray class]] ? session[@"points"] : @[];
+    NSArray<NSDictionary *> *points = [session[@"trackPoints"] isKindOfClass:[NSArray class]] ? session[@"trackPoints"] : @[];
     if (points.count == 0) {
         [self finalizeVideoForSession:session
                            outputPath:rawPath
@@ -388,6 +455,8 @@ UNI_EXPORT_METHOD(@selector(exportVideoWithOverlay:callback:))
                              callback:callback];
         return;
     }
+    session[@"videoWidth"] = @(llround(videoTrack.naturalSize.width));
+    session[@"videoHeight"] = @(llround(videoTrack.naturalSize.height));
 
     AVMutableComposition *composition = [AVMutableComposition composition];
     AVMutableCompositionTrack *compositionVideoTrack = [composition addMutableTrackWithMediaType:AVMediaTypeVideo
@@ -562,6 +631,10 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     self.trackBall = NO;
     self.hasRecordingStartTime = NO;
     self.isProcessingVision = NO;
+    self.hasPreviousSmoothedPoint = NO;
+    self.lastDetectedRelativeTime = -1;
+    self.frameIndex = 0;
+    self.trackingState = kTrackingStateNotStarted;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.liveTrailPoints removeAllObjects];
@@ -569,6 +642,7 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     });
 
     if (error) {
+        self.recordingState = kRecordingStateError;
         if (stopCallback) {
             [self replyError:[self errorMessage:error fallback:@"Failed to stop recording"] callback:stopCallback];
         }
@@ -578,15 +652,22 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     NSString *sessionId = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : @"";
     NSString *rawPath = outputFileURL.path ?: @"";
     if (session) {
+        long long endedAtMs = (long long)llround([[NSDate date] timeIntervalSince1970] * 1000.0);
+        session[@"endedAt"] = @(endedAtMs);
+        session[@"videoFilePath"] = rawPath;
         session[@"rawVideoPath"] = rawPath;
         if (sessionId.length > 0) {
             self.recordingSessions[sessionId] = session;
         }
     }
 
+    self.recordingState = kRecordingStateIdle;
+
     NSDictionary *payload = @{
         @"sessionId": sessionId,
-        @"videoFilePath": rawPath
+        @"videoFilePath": rawPath,
+        @"recordingState": self.recordingState,
+        @"trackingState": self.trackingState
     };
 
     [self emitEvent:kPickleballRecordingFinishedEvent payload:payload];
@@ -633,33 +714,37 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
             if (observation && observation.detectedPoints.count > 0) {
                 VNPoint *point = observation.detectedPoints.lastObject;
                 normalizedPoint = point.location;
-                detected = YES;
                 confidence = observation.confidence;
+                detected = (confidence >= 0.12);
             }
+        }
+
+        CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+        if (imageBuffer && self.activeRecordingSession) {
+            size_t width = CVPixelBufferGetWidth(imageBuffer);
+            size_t height = CVPixelBufferGetHeight(imageBuffer);
+            self.activeRecordingSession[@"videoWidth"] = @(width);
+            self.activeRecordingSession[@"videoHeight"] = @(height);
         }
 
         NSTimeInterval relativeTime = 0;
         if (self.hasRecordingStartTime && sampleSeconds >= self.recordingStartSeconds) {
             relativeTime = sampleSeconds - self.recordingStartSeconds;
         }
+        self.frameIndex += 1;
 
         if (detected) {
-            [self appendDetectedPoint:normalizedPoint confidence:confidence atTime:relativeTime];
-            [self emitTrackingPayload:@{
-                @"sessionId": self.activeRecordingSession[@"sessionId"] ?: @"",
-                @"detected": @YES,
-                @"confidence": @(confidence),
-                @"x": @(normalizedPoint.x),
-                @"y": @(normalizedPoint.y),
-                @"t": @(relativeTime)
-            }];
+            CGPoint smoothed = [self smoothedPointForDetectedPoint:normalizedPoint];
+            self.lastDetectedRelativeTime = relativeTime;
+            self.trackingState = kTrackingStateTracking;
+            NSDictionary *pointPayload = [self appendDetectedPoint:smoothed
+                                                        confidence:confidence
+                                                            atTime:relativeTime
+                                                        frameIndex:self.frameIndex];
+            [self emitTrackingPayloadForPoint:pointPayload detected:YES atTime:relativeTime];
         } else {
-            [self emitTrackingPayload:@{
-                @"sessionId": self.activeRecordingSession[@"sessionId"] ?: @"",
-                @"detected": @NO,
-                @"confidence": @0,
-                @"t": @(relativeTime)
-            }];
+            [self updateTrackingStateForMissAtTime:relativeTime];
+            [self emitTrackingPayloadForPoint:nil detected:NO atTime:relativeTime];
         }
 
         self.isProcessingVision = NO;
@@ -855,20 +940,55 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     return best;
 }
 
-- (void)appendDetectedPoint:(CGPoint)normalizedPoint confidence:(CGFloat)confidence atTime:(NSTimeInterval)relativeTime {
-    NSMutableArray *points = [self.activeRecordingSession[@"points"] isKindOfClass:[NSMutableArray class]]
-        ? self.activeRecordingSession[@"points"]
+- (CGPoint)smoothedPointForDetectedPoint:(CGPoint)point {
+    point.x = MIN(MAX(point.x, 0.0), 1.0);
+    point.y = MIN(MAX(point.y, 0.0), 1.0);
+
+    if (!self.hasPreviousSmoothedPoint) {
+        self.previousSmoothedPoint = point;
+        self.hasPreviousSmoothedPoint = YES;
+        return point;
+    }
+
+    CGFloat dx = point.x - self.previousSmoothedPoint.x;
+    CGFloat dy = point.y - self.previousSmoothedPoint.y;
+    CGFloat distance = hypot(dx, dy);
+
+    CGFloat alpha = kTrackingSmoothingAlpha;
+    if (distance > kOutlierDistanceThreshold) {
+        alpha = 0.22;
+    }
+
+    CGPoint smoothed = CGPointMake(alpha * point.x + (1.0 - alpha) * self.previousSmoothedPoint.x,
+                                   alpha * point.y + (1.0 - alpha) * self.previousSmoothedPoint.y);
+    self.previousSmoothedPoint = smoothed;
+    return smoothed;
+}
+
+- (NSDictionary *)appendDetectedPoint:(CGPoint)normalizedPoint
+                           confidence:(CGFloat)confidence
+                               atTime:(NSTimeInterval)relativeTime
+                           frameIndex:(NSUInteger)frameIndex {
+    NSMutableArray *points = [self.activeRecordingSession[@"trackPoints"] isKindOfClass:[NSMutableArray class]]
+        ? self.activeRecordingSession[@"trackPoints"]
         : [NSMutableArray array];
+    self.activeRecordingSession[@"trackPoints"] = points;
+
+    long long startedAtMs = [self.activeRecordingSession[@"startedAt"] respondsToSelector:@selector(longLongValue)]
+        ? [self.activeRecordingSession[@"startedAt"] longLongValue]
+        : (long long)llround([[NSDate date] timeIntervalSince1970] * 1000.0);
+    long long timestampMs = startedAtMs + (long long)llround(MAX(relativeTime, 0) * 1000.0);
 
     NSDictionary *entry = @{
+        @"timestampMs": @(timestampMs),
+        @"frameIndex": @(frameIndex),
         @"x": @(normalizedPoint.x),
         @"y": @(normalizedPoint.y),
-        @"t": @(MAX(relativeTime, 0)),
-        @"confidence": @(confidence)
+        @"confidence": @(confidence),
+        @"t": @(MAX(relativeTime, 0))
     };
 
     [points addObject:entry];
-    self.activeRecordingSession[@"points"] = points;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         UIView *hostView = [self hostView];
@@ -884,21 +1004,90 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
             [self.liveTrailPoints removeObjectsInRange:range];
         }
 
-        UIBezierPath *path = [UIBezierPath bezierPath];
-        if (self.liveTrailPoints.count > 0) {
-            [path moveToPoint:self.liveTrailPoints.firstObject.CGPointValue];
-            for (NSInteger idx = 1; idx < self.liveTrailPoints.count; idx += 1) {
-                [path addLineToPoint:self.liveTrailPoints[idx].CGPointValue];
-            }
-        }
+        UIBezierPath *path = [self smoothedPathForCGPointValues:self.liveTrailPoints];
         self.trailLayer.path = path.CGPath;
     });
+
+    return entry;
+}
+
+- (void)updateTrackingStateForMissAtTime:(NSTimeInterval)relativeTime {
+    if (self.lastDetectedRelativeTime < 0) {
+        self.trackingState = kTrackingStateSearching;
+        return;
+    }
+
+    NSTimeInterval elapsed = MAX(0, relativeTime - self.lastDetectedRelativeTime);
+    if (elapsed <= kTemporaryLossThreshold) {
+        self.trackingState = kTrackingStateTemporarilyLost;
+        return;
+    }
+
+    if (elapsed <= kResetLossThreshold) {
+        self.trackingState = kTrackingStateLost;
+        return;
+    }
+
+    self.trackingState = kTrackingStateSearching;
+    self.hasPreviousSmoothedPoint = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.liveTrailPoints removeAllObjects];
+        self.trailLayer.path = nil;
+    });
+}
+
+- (NSArray<NSDictionary *> *)recentTrackPayloadPoints {
+    NSArray *points = [self.activeRecordingSession[@"trackPoints"] isKindOfClass:[NSArray class]]
+        ? self.activeRecordingSession[@"trackPoints"]
+        : @[];
+    if (points.count == 0) {
+        return @[];
+    }
+
+    NSInteger start = MAX(0, (NSInteger)points.count - kTrailWindowPoints);
+    NSMutableArray<NSDictionary *> *recent = [NSMutableArray array];
+    for (NSInteger idx = start; idx < points.count; idx += 1) {
+        NSDictionary *item = [points[idx] isKindOfClass:[NSDictionary class]] ? points[idx] : @{};
+        CGFloat x = [item[@"x"] respondsToSelector:@selector(doubleValue)] ? [item[@"x"] doubleValue] : 0;
+        CGFloat y = [item[@"y"] respondsToSelector:@selector(doubleValue)] ? [item[@"y"] doubleValue] : 0;
+        [recent addObject:@{ @"x": @(x), @"y": @(y) }];
+    }
+    return recent;
+}
+
+- (void)emitTrackingPayloadForPoint:(NSDictionary *)currentPoint detected:(BOOL)detected atTime:(NSTimeInterval)relativeTime {
+    NSMutableDictionary *payload = [@{
+        @"sessionId": self.activeRecordingSession[@"sessionId"] ?: @"",
+        @"state": self.trackingState ?: kTrackingStateSearching,
+        @"detected": @(detected),
+        @"t": @(MAX(relativeTime, 0)),
+        @"recentPoints": [self recentTrackPayloadPoints]
+    } mutableCopy];
+
+    if (currentPoint) {
+        payload[@"x"] = currentPoint[@"x"] ?: @0;
+        payload[@"y"] = currentPoint[@"y"] ?: @0;
+        payload[@"confidence"] = currentPoint[@"confidence"] ?: @0;
+        payload[@"timestampMs"] = currentPoint[@"timestampMs"] ?: @0;
+        payload[@"frameIndex"] = currentPoint[@"frameIndex"] ?: @0;
+        payload[@"currentPoint"] = @{
+            @"x": currentPoint[@"x"] ?: @0,
+            @"y": currentPoint[@"y"] ?: @0,
+            @"confidence": currentPoint[@"confidence"] ?: @0
+        };
+    } else {
+        payload[@"confidence"] = @0;
+        payload[@"currentPoint"] = @{};
+    }
+
+    [self emitTrackingPayload:payload];
 }
 
 - (void)emitTrackingPayload:(NSDictionary *)payload {
     NSTimeInterval now = CACurrentMediaTime();
-    NSNumber *detected = [payload[@"detected"] isKindOfClass:[NSNumber class]] ? payload[@"detected"] : @NO;
-    NSTimeInterval minInterval = detected.boolValue ? 0.03 : 0.15;
+    NSString *state = [payload[@"state"] isKindOfClass:[NSString class]] ? payload[@"state"] : @"";
+    BOOL activelyTracking = [state isEqualToString:kTrackingStateTracking];
+    NSTimeInterval minInterval = activelyTracking ? 0.03 : 0.12;
 
     if ((now - self.lastTrackingEventTime) < minInterval) {
         return;
@@ -938,9 +1127,20 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     [pathValues addObject:(__bridge_transfer id)CGPathCreateMutable()];
     [keyTimes addObject:@0.0];
 
+    long long startTimestampMs = [points.firstObject[@"timestampMs"] respondsToSelector:@selector(longLongValue)]
+        ? [points.firstObject[@"timestampMs"] longLongValue]
+        : 0;
+
     for (NSInteger idx = 0; idx < points.count; idx += 1) {
         NSDictionary *pointInfo = points[idx];
-        NSTimeInterval t = [pointInfo[@"t"] respondsToSelector:@selector(doubleValue)] ? [pointInfo[@"t"] doubleValue] : 0;
+        NSTimeInterval t = [pointInfo[@"t"] respondsToSelector:@selector(doubleValue)] ? [pointInfo[@"t"] doubleValue] : -1;
+        if (t < 0 && [pointInfo[@"timestampMs"] respondsToSelector:@selector(longLongValue)] && startTimestampMs > 0) {
+            long long ts = [pointInfo[@"timestampMs"] longLongValue];
+            t = MAX(0, (NSTimeInterval)(ts - startTimestampMs) / 1000.0);
+        }
+        if (t < 0) {
+            t = 0;
+        }
         CGFloat normalizedTime = (CGFloat)(t / duration);
         normalizedTime = MAX(0.0, MIN(1.0, normalizedTime));
 
@@ -975,24 +1175,46 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                             upToIndex:(NSInteger)index
                            renderSize:(CGSize)renderSize CF_RETURNS_RETAINED {
     NSInteger start = MAX(0, index - (kTrailWindowPoints - 1));
-    UIBezierPath *path = [UIBezierPath bezierPath];
-
-    BOOL moved = NO;
+    NSMutableArray<NSValue *> *windowPoints = [NSMutableArray array];
     for (NSInteger idx = start; idx <= index; idx += 1) {
         NSDictionary *pointInfo = points[idx];
         CGFloat x = [pointInfo[@"x"] respondsToSelector:@selector(doubleValue)] ? [pointInfo[@"x"] doubleValue] : 0;
         CGFloat y = [pointInfo[@"y"] respondsToSelector:@selector(doubleValue)] ? [pointInfo[@"y"] doubleValue] : 0;
 
         CGPoint p = CGPointMake(x * renderSize.width, (1.0 - y) * renderSize.height);
-        if (!moved) {
-            [path moveToPoint:p];
-            moved = YES;
-        } else {
-            [path addLineToPoint:p];
-        }
+        [windowPoints addObject:[NSValue valueWithCGPoint:p]];
     }
 
+    UIBezierPath *path = [self smoothedPathForCGPointValues:windowPoints];
     return CGPathCreateCopy(path.CGPath);
+}
+
+- (UIBezierPath *)smoothedPathForCGPointValues:(NSArray<NSValue *> *)pointValues {
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    if (pointValues.count == 0) {
+        return path;
+    }
+
+    CGPoint first = pointValues.firstObject.CGPointValue;
+    [path moveToPoint:first];
+
+    if (pointValues.count == 1) {
+        return path;
+    }
+
+    if (pointValues.count == 2) {
+        [path addLineToPoint:pointValues.lastObject.CGPointValue];
+        return path;
+    }
+
+    for (NSInteger idx = 1; idx < pointValues.count; idx += 1) {
+        CGPoint prev = pointValues[idx - 1].CGPointValue;
+        CGPoint current = pointValues[idx].CGPointValue;
+        CGPoint mid = CGPointMake((prev.x + current.x) * 0.5, (prev.y + current.y) * 0.5);
+        [path addQuadCurveToPoint:mid controlPoint:prev];
+    }
+    [path addLineToPoint:pointValues.lastObject.CGPointValue];
+    return path;
 }
 
 - (void)finalizeVideoForSession:(NSMutableDictionary *)session
@@ -1001,22 +1223,31 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                         warning:(NSString *)warning
                        callback:(UniModuleKeepAliveCallback)callback {
     NSString *sessionId = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : @"";
-    NSString *rawPath = [session[@"rawVideoPath"] isKindOfClass:[NSString class]] ? session[@"rawVideoPath"] : @"";
+    NSString *rawPath = [session[@"videoFilePath"] isKindOfClass:[NSString class]] ? session[@"videoFilePath"] : @"";
+    if (rawPath.length == 0) {
+        rawPath = [session[@"rawVideoPath"] isKindOfClass:[NSString class]] ? session[@"rawVideoPath"] : @"";
+    }
 
     if (outputPath.length == 0) {
         outputPath = rawPath;
     }
+    session[@"outputVideoFilePath"] = outputPath ?: @"";
+    session[@"trailVideoPath"] = outputPath ?: @"";
+    self.recordingState = kRecordingStateReviewReady;
 
     [self saveFileToPhotosAtPath:outputPath
                          isVideo:YES
                       completion:^(BOOL saved, NSString *saveWarning) {
         NSMutableDictionary *payload = [@{
             @"sessionId": sessionId,
+            @"session": [session copy],
             @"outputVideoFilePath": outputPath ?: @"",
             @"videoFilePath": rawPath ?: @"",
             @"hasTrail": @(hasTrail),
             @"savedToPhotos": @(saved),
-            @"usedRawFallback": @(!hasTrail)
+            @"usedRawFallback": @(!hasTrail),
+            @"recordingState": self.recordingState ?: kRecordingStateReviewReady,
+            @"trackingState": self.trackingState ?: kTrackingStateNotStarted
         } mutableCopy];
 
         NSString *combinedWarning = [self combinedWarning:warning with:saveWarning];

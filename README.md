@@ -1,72 +1,58 @@
-# Pickleball Camera App
+# Pickleball Trail Camera
 
-iOS-only pickleball camera app implemented per [`pickleball_ios_camera_app_spec.md`](./pickleball_ios_camera_app_spec.md).
+iOS-only pickleball camera app implemented from [`pickleball_ios_camera_app_spec.md`](./pickleball_ios_camera_app_spec.md) as the source of truth.
 
-## What This Build Implements
+## Implemented v1 Scope
 
-- Minimal camera UX with exactly two modes: `PHOTO` and `VIDEO`
-- Rear-camera preview only
-- No zoom control
-- Photo capture
-- Video start/stop record toggle
-- Pickleball tracking while recording
-- Live yellow trajectory overlay
-  - color: `#FFD400`
-  - line width: `5`
-  - line cap/join: `round`
-  - recent history window: last `30` points
-- Export video with burned-in trail
-- If no ball is detected, recording is still saved successfully (raw fallback path)
-- Save photos/videos to iOS Photos album by default (local file retained if Photos save fails)
+- iOS Camera-like capture flow with exactly two modes: `PHOTO` and `VIDEO`
+- Rear-camera live preview, iPhone target only, and system auto-rotation behavior
+- Explicit no-zoom behavior (no zoom UI, rear camera locked to 1x)
+- Photo capture and save to iOS Photos by default (`photo_<timestamp>.jpg` local copy retained)
+- Video recording and save to iOS Photos by default (`video_raw_<timestamp>.mp4` local copy retained)
+- Pickleball tracking during recording with tracking states:
+  - `not_started`, `searching`, `tracking`, `temporarily_lost`, `lost`
+- Live yellow trajectory overlay (`#FFD400`, width `5`, round cap/join, recent `30` points)
+- Smoothed trail rendering in live preview and exported video
+- Export with burned-in trail (`video_trail_<timestamp>.mp4`)
+- Graceful fallback when no ball is detected: raw video is still saved and returned
+- Graceful fallback when overlay export fails: raw video is preserved and returned
 
-## Project Layout
+## Project Structure
 
-- `pages/camera/index.vue`: uni-app camera UI (PHOTO/VIDEO mode + capture control)
-- `pages/review/index.vue`: simple captured media review screen
-- `utils/nativeBridge.js`: uni-app JS bridge to native module
-- `nativeplugins/PickleballTracker/ios/Sources/PickleballTrackerModule.m`: native iOS camera, tracking, overlay, export, Photos save logic
-- `ios/PickleballCameraApp.xcodeproj`: standalone native Xcode project for direct build/run
+- `pages/camera/index.vue`: uni-app camera page (PHOTO/VIDEO interaction, status, permissions, capture flow)
+- `pages/review/index.vue`: simple media review screen with back control
+- `utils/nativeBridge.js`: uni-app bridge to native plugin methods/events
+- `nativeplugins/PickleballTracker/ios/Sources/PickleballTrackerModule.m`: native AVFoundation + Vision + overlay + export implementation
+- `ios/PickleballCameraApp.xcodeproj`: standalone Xcode app wired to the same native module sources
 
-## Native Module Bridge API
+## Bridge API (uni-app <-> native)
 
+Methods:
 - `initCamera(options, callback)`
 - `startPreview(options, callback)`
 - `stopPreview(options, callback)`
 - `takePhoto(options, callback)`
 - `startRecording(options, callback)`
 - `stopRecording(options, callback)`
-- `exportVideoWithOverlay(options, callback)`
+- `getRecordingStatus(options, callback)`
 - `onTrackingUpdate(options, callback)`
 - `onRecordingFinished(options, callback)`
+- `exportVideoWithOverlay(options, callback)`
 
 Events:
-
 - `PickleballTrackingUpdate`
 - `PickleballRecordingFinished`
 
-## Exact Build And Test Steps (iPhone 15 Pro)
+## Standalone iOS Project Sync Notes
 
-### A) Direct Xcode Run (standalone project under `ios/`)
+`ios/PickleballCameraApp.xcodeproj` remains synchronized with source and runtime requirements:
 
-1. Connect an iPhone 15 Pro by USB, unlock it, and trust this Mac.
-2. Open `ios/PickleballCameraApp.xcodeproj` in Xcode.
-3. Select target `PickleballCameraApp`.
-4. In `Signing & Capabilities`, keep `Automatically manage signing` enabled.
-5. Choose your Apple Team.
-6. Set a unique bundle id if needed (default: `com.example.PickleballCameraApp`).
-7. Select the run destination `iPhone 15 Pro`.
-8. Build and run (`Cmd+R`).
-9. On first launch, allow Camera, Microphone, and Photos permissions.
-10. Test:
-    - tap `PHOTO`, then capture: photo should save
-    - tap `VIDEO`, start and stop recording: video should save
-    - record with a visible pickleball in frame: live yellow trail should appear
-    - replay saved video in Photos: burned-in yellow trail should be visible
-    - record without a visible ball: video should still save successfully
+- Source refs include app files plus plugin sources from `../nativeplugins/PickleballTracker/ios/Sources`
+- Build phases include `PickleballTrackerModule.m`
+- Frameworks linked: `AVFoundation`, `Vision`, `Photos`, `UIKit`, `CoreMedia`, `CoreVideo`, `CoreGraphics`, `QuartzCore`
+- `Info.plist` includes camera/mic/photos usage strings and rotation support
 
-### B) CLI Build Validation
-
-From repo root:
+## Build Check (CLI)
 
 ```bash
 xcodebuild -project ios/PickleballCameraApp.xcodeproj \
@@ -77,7 +63,8 @@ xcodebuild -project ios/PickleballCameraApp.xcodeproj \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-## Notes
+## Runtime Permissions Copy
 
-- Xcode project links required frameworks including `AVFoundation`, `Vision`, `Photos`, `UIKit`, `CoreMedia`, `CoreVideo`, `CoreGraphics`, and `QuartzCore`.
-- `ios/PickleballCameraApp/Info.plist` includes camera/mic/photos usage descriptions required for direct run.
+- Camera: `Allow camera access to capture photos and videos.`
+- Microphone: `Allow microphone access to record video audio.`
+- Photos: `Allow Photos access to save captured photos and videos automatically.`

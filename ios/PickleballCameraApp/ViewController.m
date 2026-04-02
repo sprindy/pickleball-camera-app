@@ -1,6 +1,7 @@
 #import "ViewController.h"
 
 #import <AVFoundation/AVFoundation.h>
+#import <Photos/Photos.h>
 
 #import "PickleballTrackerModule.h"
 
@@ -16,6 +17,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
 - (void)takePhoto:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback;
 - (void)startRecording:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback;
 - (void)stopRecording:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback;
+- (void)getRecordingStatus:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback;
 - (void)exportVideoWithOverlay:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback;
 @end
 
@@ -167,8 +169,16 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
     }
 
     NSDictionary *payload = [note.userInfo isKindOfClass:[NSDictionary class]] ? note.userInfo : @{};
-    BOOL detected = [payload[@"detected"] respondsToSelector:@selector(boolValue)] ? [payload[@"detected"] boolValue] : NO;
-    [self updateStatus:(detected ? @"Recording - Tracking ball..." : @"Recording - Searching...")];
+    NSString *state = [payload[@"state"] isKindOfClass:[NSString class]] ? payload[@"state"] : @"searching";
+    if ([state isEqualToString:@"tracking"]) {
+        [self updateStatus:@"Tracking ball..."];
+        return;
+    }
+    if ([state isEqualToString:@"temporarily_lost"] || [state isEqualToString:@"lost"]) {
+        [self updateStatus:@"Ball lost"];
+        return;
+    }
+    [self updateStatus:@"Recording..."];
 }
 
 - (void)bootstrapCamera {
@@ -180,7 +190,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
         }
 
         if (!granted) {
-            [self updateStatus:@"Camera/Mic permission required"];
+            [self updateStatus:@"Permission required"];
             return;
         }
 
@@ -205,6 +215,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
     dispatch_group_t group = dispatch_group_create();
     __block BOOL cameraGranted = NO;
     __block BOOL micGranted = NO;
+    __block BOOL photosGranted = NO;
 
     dispatch_group_enter(group);
     [self requestAccessForMediaType:AVMediaTypeVideo completion:^(BOOL granted) {
@@ -218,11 +229,55 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
         dispatch_group_leave(group);
     }];
 
+    dispatch_group_enter(group);
+    [self requestPhotoLibraryAddAccess:^(BOOL granted) {
+        photosGranted = granted;
+        dispatch_group_leave(group);
+    }];
+
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{
         if (completion) {
-            completion(cameraGranted && micGranted);
+            completion(cameraGranted && micGranted && photosGranted);
         }
     });
+}
+
+- (void)requestPhotoLibraryAddAccess:(void (^)(BOOL granted))completion {
+    if (@available(iOS 14.0, *)) {
+        PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
+        if (status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited) {
+            completion(YES);
+            return;
+        }
+        if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
+            completion(NO);
+            return;
+        }
+
+        [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus newStatus) {
+            BOOL granted = (newStatus == PHAuthorizationStatusAuthorized || newStatus == PHAuthorizationStatusLimited);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(granted);
+            });
+        }];
+        return;
+    }
+
+    PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatus];
+    if (status == PHAuthorizationStatusAuthorized) {
+        completion(YES);
+        return;
+    }
+    if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
+        completion(NO);
+        return;
+    }
+    [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus newStatus) {
+        BOOL granted = (newStatus == PHAuthorizationStatusAuthorized);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(granted);
+        });
+    }];
 }
 
 - (void)requestAccessForMediaType:(AVMediaType)mediaType completion:(void (^)(BOOL granted))completion {
@@ -259,7 +314,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
     }
     self.mode = CaptureModeVideo;
     [self refreshControlStyles];
-    [self updateStatus:@"Ready to record"];
+    [self updateStatus:@"Ready"];
 }
 
 - (void)onCaptureTapped {
@@ -282,7 +337,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
 - (void)capturePhoto {
     self.isBusy = YES;
     [self refreshControlStyles];
-    [self updateStatus:@"Capturing photo..."];
+    [self updateStatus:@"Ready"];
 
     __weak typeof(self) weakSelf = self;
     [self.tracker takePhoto:@{} callback:^(NSDictionary *result, BOOL keepAlive) {
@@ -295,7 +350,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
         [self refreshControlStyles];
         [self handleResult:result success:^(NSDictionary *payload) {
             NSString *warning = [payload[@"saveWarning"] isKindOfClass:[NSString class]] ? payload[@"saveWarning"] : @"";
-            [self updateStatus:(warning.length > 0 ? warning : @"Photo saved")];
+            [self updateStatus:(warning.length > 0 ? warning : @"Saved")];
         }];
     }];
 }
@@ -303,7 +358,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
 - (void)startRecording {
     self.isBusy = YES;
     [self refreshControlStyles];
-    [self updateStatus:@"Starting recording..."];
+    [self updateStatus:@"Recording..."];
 
     __weak typeof(self) weakSelf = self;
     [self.tracker startRecording:@{ @"trackBall": @YES } callback:^(NSDictionary *result, BOOL keepAlive) {
@@ -318,7 +373,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
             self.currentSessionId = [payload[@"sessionId"] isKindOfClass:[NSString class]] ? payload[@"sessionId"] : @"";
             self.lastRawVideoPath = [payload[@"videoFilePath"] isKindOfClass:[NSString class]] ? payload[@"videoFilePath"] : @"";
             [self refreshControlStyles];
-            [self updateStatus:@"Recording - Searching..."];
+            [self updateStatus:@"Recording..."];
         }];
     }];
 }
@@ -326,7 +381,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
 - (void)stopRecordingAndExport {
     self.isBusy = YES;
     [self refreshControlStyles];
-    [self updateStatus:@"Stopping recording..."];
+    [self updateStatus:@"Recording..."];
 
     NSString *sessionId = self.currentSessionId ?: @"";
     __weak typeof(self) weakSelf = self;
@@ -348,11 +403,10 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
 
                 [self handleResult:exportResult success:^(NSDictionary *exportPayload) {
                     NSString *warning = [exportPayload[@"warning"] isKindOfClass:[NSString class]] ? exportPayload[@"warning"] : @"";
-                    BOOL hasTrail = [exportPayload[@"hasTrail"] respondsToSelector:@selector(boolValue)] ? [exportPayload[@"hasTrail"] boolValue] : NO;
                     if (warning.length > 0) {
                         [self updateStatus:warning];
                     } else {
-                        [self updateStatus:(hasTrail ? @"Saved with trajectory" : @"Saved video (no ball detected)")];
+                        [self updateStatus:@"Saved"];
                     }
                 }];
             }];
@@ -403,7 +457,7 @@ typedef NS_ENUM(NSInteger, CaptureMode) {
     if (error.length > 0) {
         self.isBusy = NO;
         [self refreshControlStyles];
-        [self updateStatus:[NSString stringWithFormat:@"Error: %@", error]];
+        [self updateStatus:error];
         return;
     }
 
