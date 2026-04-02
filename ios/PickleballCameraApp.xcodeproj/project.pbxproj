@@ -1,0 +1,324 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		C00000010000000000000001 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = B00000030000000000000001 /* AppDelegate.m */; };
+		C00000020000000000000001 /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = B00000050000000000000001 /* ViewController.m */; };
+		C00000030000000000000001 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = B00000060000000000000001 /* main.m */; };
+		C00000040000000000000001 /* DCUniModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B00000090000000000000001 /* DCUniModule.m */; };
+		C00000050000000000000001 /* PickleballTrackerModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B00000110000000000000001 /* PickleballTrackerModule.m */; };
+		C00000060000000000000001 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000120000000000000001 /* AVFoundation.framework */; };
+		C00000070000000000000001 /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000130000000000000001 /* Vision.framework */; };
+		C00000080000000000000001 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000140000000000000001 /* UIKit.framework */; };
+		C00000090000000000000001 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000150000000000000001 /* CoreMedia.framework */; };
+		C00000100000000000000001 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000160000000000000001 /* CoreVideo.framework */; };
+		C00000110000000000000001 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000170000000000000001 /* CoreGraphics.framework */; };
+		C00000120000000000000001 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000180000000000000001 /* QuartzCore.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B00000010000000000000001 /* PickleballCameraApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PickleballCameraApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00000020000000000000001 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		B00000030000000000000001 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		B00000040000000000000001 /* ViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ViewController.h; sourceTree = "<group>"; };
+		B00000050000000000000001 /* ViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ViewController.m; sourceTree = "<group>"; };
+		B00000060000000000000001 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		B00000070000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B00000080000000000000001 /* DCUniModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DCUniModule.h; sourceTree = "<group>"; };
+		B00000090000000000000001 /* DCUniModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DCUniModule.m; sourceTree = "<group>"; };
+		B00000100000000000000001 /* PickleballTrackerModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PickleballTrackerModule.h; sourceTree = "<group>"; };
+		B00000110000000000000001 /* PickleballTrackerModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PickleballTrackerModule.m; sourceTree = "<group>"; };
+		B00000120000000000000001 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		B00000130000000000000001 /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
+		B00000140000000000000001 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		B00000150000000000000001 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		B00000160000000000000001 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
+		B00000170000000000000001 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		B00000180000000000000001 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D00000020000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C00000060000000000000001 /* AVFoundation.framework in Frameworks */,
+				C00000070000000000000001 /* Vision.framework in Frameworks */,
+				C00000080000000000000001 /* UIKit.framework in Frameworks */,
+				C00000090000000000000001 /* CoreMedia.framework in Frameworks */,
+				C00000100000000000000001 /* CoreVideo.framework in Frameworks */,
+				C00000110000000000000001 /* CoreGraphics.framework in Frameworks */,
+				C00000120000000000000001 /* QuartzCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000020000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A00000050000000000000001 /* PickleballCameraApp */,
+				A00000060000000000000001 /* PickleballTrackerPlugin */,
+				A00000040000000000000001 /* Frameworks */,
+				A00000030000000000000001 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000030000000000000001 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B00000010000000000000001 /* PickleballCameraApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A00000040000000000000001 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B00000120000000000000001 /* AVFoundation.framework */,
+				B00000130000000000000001 /* Vision.framework */,
+				B00000140000000000000001 /* UIKit.framework */,
+				B00000150000000000000001 /* CoreMedia.framework */,
+				B00000160000000000000001 /* CoreVideo.framework */,
+				B00000170000000000000001 /* CoreGraphics.framework */,
+				B00000180000000000000001 /* QuartzCore.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A00000050000000000000001 /* PickleballCameraApp */ = {
+			isa = PBXGroup;
+			children = (
+				B00000020000000000000001 /* AppDelegate.h */,
+				B00000030000000000000001 /* AppDelegate.m */,
+				B00000040000000000000001 /* ViewController.h */,
+				B00000050000000000000001 /* ViewController.m */,
+				B00000060000000000000001 /* main.m */,
+				B00000070000000000000001 /* Info.plist */,
+				B00000080000000000000001 /* DCUniModule.h */,
+				B00000090000000000000001 /* DCUniModule.m */,
+			);
+			path = PickleballCameraApp;
+			sourceTree = "<group>";
+		};
+		A00000060000000000000001 /* PickleballTrackerPlugin */ = {
+			isa = PBXGroup;
+			children = (
+				B00000100000000000000001 /* PickleballTrackerModule.h */,
+				B00000110000000000000001 /* PickleballTrackerModule.m */,
+			);
+			name = PickleballTrackerPlugin;
+			path = ../nativeplugins/PickleballTracker/ios/Sources;
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E00000010000000000000001 /* PickleballCameraApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F00000020000000000000001 /* Build configuration list for PBXNativeTarget "PickleballCameraApp" */;
+			buildPhases = (
+				D00000010000000000000001 /* Sources */,
+				D00000020000000000000001 /* Frameworks */,
+				D00000030000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PickleballCameraApp;
+			productName = PickleballCameraApp;
+			productReference = B00000010000000000000001 /* PickleballCameraApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000010000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					E00000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = F00000010000000000000001 /* Build configuration list for PBXProject "PickleballCameraApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A00000020000000000000001;
+			productRefGroup = A00000030000000000000001 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E00000010000000000000001 /* PickleballCameraApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D00000030000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D00000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C00000010000000000000001 /* AppDelegate.m in Sources */,
+				C00000020000000000000001 /* ViewController.m in Sources */,
+				C00000030000000000000001 /* main.m in Sources */,
+				C00000040000000000000001 /* DCUniModule.m in Sources */,
+				C00000050000000000000001 /* PickleballTrackerModule.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		G00000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		G00000020000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Release;
+		};
+		G00000030000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/PickleballCameraApp",
+					"$(SRCROOT)/../nativeplugins/PickleballTracker/ios/Sources",
+				);
+				INFOPLIST_FILE = PickleballCameraApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.PickleballCameraApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		G00000040000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/PickleballCameraApp",
+					"$(SRCROOT)/../nativeplugins/PickleballTracker/ios/Sources",
+				);
+				INFOPLIST_FILE = PickleballCameraApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.PickleballCameraApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F00000010000000000000001 /* Build configuration list for PBXProject "PickleballCameraApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				G00000010000000000000001 /* Debug */,
+				G00000020000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F00000020000000000000001 /* Build configuration list for PBXNativeTarget "PickleballCameraApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				G00000030000000000000001 /* Debug */,
+				G00000040000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000010000000000000001 /* Project object */;
+}

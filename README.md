@@ -50,3 +50,42 @@ Minimum iOS target for the native plugin is `14.0`.
 - `photo_<timestamp>.jpg`
 - `video_raw_<timestamp>.mp4`
 - `video_trail_<timestamp>.mp4`
+
+## Standalone Xcode Project (Direct Build/Run)
+
+A standalone native iOS project is available at:
+
+- `ios/PickleballCameraApp.xcodeproj`
+
+It includes:
+
+- app target: `PickleballCameraApp`
+- plugin source integration from `nativeplugins/PickleballTracker/ios/Sources`
+- linked frameworks: `AVFoundation`, `Vision`, `UIKit`, `CoreMedia`, `CoreVideo`, `CoreGraphics`, `QuartzCore`
+- a native demo screen with buttons for preview, photo capture, recording, and trail-export
+
+### Build/Run On iPhone 15 Pro (Xcode)
+
+1. Connect your iPhone 15 Pro to your Mac and unlock it.
+2. Open `ios/PickleballCameraApp.xcodeproj` in Xcode.
+3. In Xcode, select target `PickleballCameraApp`.
+4. Go to `Signing & Capabilities` and keep `Automatically manage signing` enabled.
+5. Choose your Apple Developer Team from the `Team` dropdown.
+6. If needed, change `Bundle Identifier` from `com.example.PickleballCameraApp` to a unique identifier under your team.
+7. In the scheme/device picker, select your connected `iPhone 15 Pro`.
+8. Press `Run` (`Cmd+R`).
+9. On first launch, allow Camera and Microphone permissions.
+10. Use the on-screen buttons to test `Init + Preview`, `Take Photo`, `Start Recording`, and `Stop Recording + Export`.
+
+### Optional CLI validation
+
+From repo root:
+
+```bash
+xcodebuild -project ios/PickleballCameraApp.xcodeproj \
+  -scheme PickleballCameraApp \
+  -configuration Debug \
+  -destination 'generic/platform=iOS' \
+  -derivedDataPath /tmp/pickleball-camera-derived \
+  CODE_SIGNING_ALLOWED=NO build
+```
