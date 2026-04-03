@@ -5,11 +5,9 @@
     <canvas canvas-id="trailCanvas" id="trailCanvas" class="trail-canvas"></canvas>
 
     <view class="hud">
-      <view class="status">{{ statusText }}</view>
+      <view class="status">{{ statusText }} | {{ debugText }}</view>
       <view v-if="recording" class="timer">{{ formattedTimer }}</view>
     </view>
-
-    <view class="debug">{{ debugText }}</view>
 
     <view class="controls">
       <button class="btn photo" @click="onTakePhoto" :disabled="busy">Photo</button>
@@ -48,6 +46,7 @@ export default {
   },
   async onLoad() {
     this.cameraCtx = uni.createCameraContext()
+    uni.showModal({ title: 'Debug build active', content: 'If you can see this, latest code is running.', showCancel: false })
     const ok = await this.ensurePermissions()
     if (!ok) return
     await this.initNativeBestEffort()
@@ -217,7 +216,6 @@ export default {
 .hud { position: absolute; top: 56rpx; left: 32rpx; right: 32rpx; z-index: 10; display: flex; justify-content: space-between; align-items: center; }
 .status { color: #fff; font-size: 28rpx; }
 .timer { color: #FFD400; font-size: 30rpx; font-weight: 700; }
-.debug { position: absolute; top: 110rpx; left: 32rpx; right: 32rpx; color: #9be7ff; font-size: 22rpx; z-index: 10; }
 .controls { position: absolute; bottom: 56rpx; width: 100%; display: flex; justify-content: center; gap: 24rpx; z-index: 10; }
 .btn { border-radius: 999px; padding: 20rpx 40rpx; border: none; }
 .photo { background: #fff; color: #000; }
