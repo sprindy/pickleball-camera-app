@@ -1,23 +1,15 @@
 <template>
   <view class="camera-page">
-    <!-- Reliable live preview fallback -->
-    <camera
-      id="uniCamera"
-      class="preview"
-      device-position="back"
-      flash="off"
-      mode="normal"
-    />
-
-    <!-- Native host kept for plugin-based builds -->
+    <camera id="uniCamera" class="preview" device-position="back" flash="off" mode="normal" />
     <view class="native-host" id="nativeCameraHost"></view>
-
     <canvas canvas-id="trailCanvas" id="trailCanvas" class="trail-canvas"></canvas>
 
     <view class="hud">
       <view class="status">{{ statusText }}</view>
       <view v-if="recording" class="timer">{{ formattedTimer }}</view>
     </view>
+
+    <view class="debug">{{ debugText }}</view>
 
     <view class="controls">
       <button class="btn photo" @click="onTakePhoto" :disabled="busy">Photo</button>
@@ -38,11 +30,11 @@ export default {
       recording: false,
       busy: false,
       statusText: 'Ready',
+      debugText: 'booting...',
       lastMediaPath: '',
       lastMediaType: '',
       elapsedSeconds: 0,
       timerId: null,
-      trailPoints: [],
       nativeReady: false,
       cameraCtx: null
     }
@@ -56,6 +48,8 @@ export default {
   },
   async onLoad() {
     this.cameraCtx = uni.createCameraContext()
+    const ok = await this.ensurePermissions()
+    if (!ok) return
     await this.initNativeBestEffort()
     this.$nextTick(() => this.clearTrail())
   },
@@ -64,6 +58,32 @@ export default {
     if (this.nativeReady) cameraBridge.stopPreview().catch(() => {})
   },
   methods: {
+    async ensurePermissions() {
+      const auth = (scope) => new Promise((resolve) => {
+        uni.authorize({ scope, success: () => resolve(true), fail: () => resolve(false) })
+      })
+
+      const cam = await auth('scope.camera')
+      const mic = await auth('scope.record')
+
+      this.debugText = `perm camera=${cam} mic=${mic}`
+
+      if (!cam || !mic) {
+        this.statusText = 'Permission required'
+        uni.showModal({
+          title: 'Permission required',
+          content: 'Please allow Camera and Microphone access in Settings.',
+          confirmText: 'Open Settings',
+          success: (res) => {
+            if (res.confirm) {
+              uni.openSetting({})
+            }
+          }
+        })
+        return false
+      }
+      return true
+    },
     async initNativeBestEffort() {
       try {
         cameraBridge.setEventHandler(this.handleNativeEvent)
@@ -73,13 +93,12 @@ export default {
       } catch (e) {
         this.nativeReady = false
       }
+      this.debugText += ` | nativeReady=${this.nativeReady}`
     },
     startTimer() {
       this.stopTimer()
       this.elapsedSeconds = 0
-      this.timerId = setInterval(() => {
-        this.elapsedSeconds += 1
-      }, 1000)
+      this.timerId = setInterval(() => { this.elapsedSeconds += 1 }, 1000)
     },
     stopTimer() {
       if (this.timerId) {
@@ -92,25 +111,18 @@ export default {
       try {
         if (this.nativeReady) {
           const res = await cameraBridge.takePhoto()
-          this.lastMediaType = 'photo'
           this.lastMediaPath = res.path
         } else {
           const res = await new Promise((resolve, reject) => {
-            this.cameraCtx.takePhoto({
-              quality: 'high',
-              success: resolve,
-              fail: reject
-            })
+            this.cameraCtx.takePhoto({ quality: 'high', success: resolve, fail: reject })
           })
-          this.lastMediaType = 'photo'
           this.lastMediaPath = res.tempImagePath
         }
-
-        uni.navigateTo({
-          url: `/pages/review/index?type=photo&path=${encodeURIComponent(this.lastMediaPath)}`
-        })
+        this.lastMediaType = 'photo'
+        uni.navigateTo({ url: `/pages/review/index?type=photo&path=${encodeURIComponent(this.lastMediaPath)}` })
       } catch (e) {
-        this.statusText = e.message || 'Photo failed'
+        this.statusText = 'Photo failed'
+        this.debugText = `photo err: ${e?.errMsg || e?.message || JSON.stringify(e)}`
       } finally {
         this.busy = false
       }
@@ -121,8 +133,6 @@ export default {
         if (!this.recording) {
           this.recording = true
           this.startTimer()
-          this.trailPoints = []
-          this.clearTrail()
           this.statusText = 'Recording...'
 
           if (this.nativeReady) {
@@ -132,6 +142,7 @@ export default {
               this.cameraCtx.startRecord({ success: resolve, fail: reject })
             })
           }
+          this.debugText = `recording started | nativeReady=${this.nativeReady}`
         } else {
           this.recording = false
           this.stopTimer()
@@ -150,17 +161,16 @@ export default {
 
           this.lastMediaType = 'video'
           this.statusText = 'Saved'
-          uni.navigateTo({
-            url: `/pages/review/index?type=video&path=${encodeURIComponent(this.lastMediaPath)}`
-          })
+          this.debugText = 'recording stopped and saved'
+          uni.navigateTo({ url: `/pages/review/index?type=video&path=${encodeURIComponent(this.lastMediaPath)}` })
         }
       } catch (e) {
-        // Roll back state if start failed
         if (this.recording) {
           this.recording = false
           this.stopTimer()
         }
-        this.statusText = e.message || 'Recording failed'
+        this.statusText = 'Recording failed'
+        this.debugText = `record err: ${e?.errMsg || e?.message || JSON.stringify(e)}`
       } finally {
         this.busy = false
       }
@@ -168,13 +178,9 @@ export default {
     handleNativeEvent(evt) {
       const normalized = evt?.detail || evt || {}
       if (normalized?.type !== 'trackingUpdate') return
-
       const payload = normalized.payload || {}
       this.statusText = payload.state === 'tracking' ? 'Tracking ball...' : 'Ball lost'
-
-      const points = Array.isArray(payload.recentPoints) ? payload.recentPoints : []
-      this.trailPoints = points
-      this.drawTrail(points)
+      this.drawTrail(Array.isArray(payload.recentPoints) ? payload.recentPoints : [])
     },
     clearTrail() {
       const ctx = uni.createCanvasContext('trailCanvas', this)
@@ -184,28 +190,20 @@ export default {
     drawTrail(points) {
       const ctx = uni.createCanvasContext('trailCanvas', this)
       ctx.clearRect(0, 0, 2000, 2000)
-      if (!points.length) {
-        ctx.draw()
-        return
-      }
-
+      if (!points.length) return ctx.draw()
       ctx.beginPath()
       ctx.setStrokeStyle('#FFD400')
       ctx.setLineWidth(5)
       ctx.setLineCap('round')
       ctx.setLineJoin('round')
       ctx.moveTo(points[0].x, points[0].y)
-      for (let i = 1; i < points.length; i += 1) {
-        ctx.lineTo(points[i].x, points[i].y)
-      }
+      for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y)
       ctx.stroke()
       ctx.draw()
     },
     openReview() {
       if (!this.lastMediaPath) return
-      uni.navigateTo({
-        url: `/pages/review/index?type=${this.lastMediaType}&path=${encodeURIComponent(this.lastMediaPath)}`
-      })
+      uni.navigateTo({ url: `/pages/review/index?type=${this.lastMediaType}&path=${encodeURIComponent(this.lastMediaPath)}` })
     }
   }
 }
@@ -219,6 +217,7 @@ export default {
 .hud { position: absolute; top: 56rpx; left: 32rpx; right: 32rpx; z-index: 10; display: flex; justify-content: space-between; align-items: center; }
 .status { color: #fff; font-size: 28rpx; }
 .timer { color: #FFD400; font-size: 30rpx; font-weight: 700; }
+.debug { position: absolute; top: 110rpx; left: 32rpx; right: 32rpx; color: #9be7ff; font-size: 22rpx; z-index: 10; }
 .controls { position: absolute; bottom: 56rpx; width: 100%; display: flex; justify-content: center; gap: 24rpx; z-index: 10; }
 .btn { border-radius: 999px; padding: 20rpx 40rpx; border: none; }
 .photo { background: #fff; color: #000; }
