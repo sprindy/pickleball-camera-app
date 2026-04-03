@@ -1,6 +1,17 @@
 <template>
   <view class="camera-page">
-    <view class="preview" id="nativeCameraHost"></view>
+    <!-- Reliable live preview fallback -->
+    <camera
+      id="uniCamera"
+      class="preview"
+      device-position="back"
+      flash="off"
+      mode="normal"
+    />
+
+    <!-- Native host kept for plugin-based builds -->
+    <view class="native-host" id="nativeCameraHost"></view>
+
     <canvas canvas-id="trailCanvas" id="trailCanvas" class="trail-canvas"></canvas>
 
     <view class="hud">
@@ -31,7 +42,9 @@ export default {
       lastMediaType: '',
       elapsedSeconds: 0,
       timerId: null,
-      trailPoints: []
+      trailPoints: [],
+      nativeReady: false,
+      cameraCtx: null
     }
   },
   computed: {
@@ -42,22 +55,23 @@ export default {
     }
   },
   async onLoad() {
-    await this.init()
+    this.cameraCtx = uni.createCameraContext()
+    await this.initNativeBestEffort()
     this.$nextTick(() => this.clearTrail())
   },
   onUnload() {
     this.stopTimer()
-    cameraBridge.stopPreview().catch(() => {})
+    if (this.nativeReady) cameraBridge.stopPreview().catch(() => {})
   },
   methods: {
-    async init() {
+    async initNativeBestEffort() {
       try {
-        this.statusText = 'Ready'
         cameraBridge.setEventHandler(this.handleNativeEvent)
         await cameraBridge.initCamera('nativeCameraHost')
         await cameraBridge.startPreview()
+        this.nativeReady = true
       } catch (e) {
-        this.statusText = 'Permission required'
+        this.nativeReady = false
       }
     },
     startTimer() {
@@ -76,10 +90,27 @@ export default {
     async onTakePhoto() {
       this.busy = true
       try {
-        const res = await cameraBridge.takePhoto()
-        this.lastMediaType = 'photo'
-        this.lastMediaPath = res.path
-        uni.navigateTo({ url: `/pages/review/index?type=photo&path=${encodeURIComponent(res.path)}` })
+        if (this.nativeReady) {
+          const res = await cameraBridge.takePhoto()
+          this.lastMediaType = 'photo'
+          this.lastMediaPath = res.path
+        } else {
+          const res = await new Promise((resolve, reject) => {
+            this.cameraCtx.takePhoto({
+              quality: 'high',
+              success: resolve,
+              fail: reject
+            })
+          })
+          this.lastMediaType = 'photo'
+          this.lastMediaPath = res.tempImagePath
+        }
+
+        uni.navigateTo({
+          url: `/pages/review/index?type=photo&path=${encodeURIComponent(this.lastMediaPath)}`
+        })
+      } catch (e) {
+        this.statusText = e.message || 'Photo failed'
       } finally {
         this.busy = false
       }
@@ -88,25 +119,48 @@ export default {
       this.busy = true
       try {
         if (!this.recording) {
-          await cameraBridge.startRecording()
           this.recording = true
           this.startTimer()
           this.trailPoints = []
           this.clearTrail()
           this.statusText = 'Recording...'
+
+          if (this.nativeReady) {
+            await cameraBridge.startRecording()
+          } else {
+            await new Promise((resolve, reject) => {
+              this.cameraCtx.startRecord({ success: resolve, fail: reject })
+            })
+          }
         } else {
           this.recording = false
           this.stopTimer()
           this.statusText = 'Processing video...'
-          const stopRes = await cameraBridge.stopRecording()
-          const output = await cameraBridge.exportVideoWithOverlay(stopRes.sessionId)
+
+          if (this.nativeReady) {
+            const stopRes = await cameraBridge.stopRecording()
+            const output = await cameraBridge.exportVideoWithOverlay(stopRes.sessionId)
+            this.lastMediaPath = output.outputPath || stopRes.rawVideoPath
+          } else {
+            const res = await new Promise((resolve, reject) => {
+              this.cameraCtx.stopRecord({ success: resolve, fail: reject })
+            })
+            this.lastMediaPath = res.tempVideoPath
+          }
+
           this.lastMediaType = 'video'
-          this.lastMediaPath = output.outputPath || stopRes.rawVideoPath
           this.statusText = 'Saved'
-          uni.navigateTo({ url: `/pages/review/index?type=video&path=${encodeURIComponent(this.lastMediaPath)}` })
+          uni.navigateTo({
+            url: `/pages/review/index?type=video&path=${encodeURIComponent(this.lastMediaPath)}`
+          })
         }
       } catch (e) {
-        this.statusText = e.message || 'error'
+        // Roll back state if start failed
+        if (this.recording) {
+          this.recording = false
+          this.stopTimer()
+        }
+        this.statusText = e.message || 'Recording failed'
       } finally {
         this.busy = false
       }
@@ -149,7 +203,9 @@ export default {
     },
     openReview() {
       if (!this.lastMediaPath) return
-      uni.navigateTo({ url: `/pages/review/index?type=${this.lastMediaType}&path=${encodeURIComponent(this.lastMediaPath)}` })
+      uni.navigateTo({
+        url: `/pages/review/index?type=${this.lastMediaType}&path=${encodeURIComponent(this.lastMediaPath)}`
+      })
     }
   }
 }
@@ -157,7 +213,8 @@ export default {
 
 <style>
 .camera-page { width: 100vw; height: 100vh; background: #000; position: relative; }
-.preview { position: absolute; inset: 0; }
+.preview { position: absolute; inset: 0; width: 100vw; height: 100vh; }
+.native-host { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .trail-canvas { position: absolute; inset: 0; width: 100vw; height: 100vh; z-index: 8; pointer-events: none; }
 .hud { position: absolute; top: 56rpx; left: 32rpx; right: 32rpx; z-index: 10; display: flex; justify-content: space-between; align-items: center; }
 .status { color: #fff; font-size: 28rpx; }
