@@ -4,6 +4,8 @@
     <view class="native-host" id="nativeCameraHost"></view>
     <canvas canvas-id="trailCanvas" id="trailCanvas" class="trail-canvas"></canvas>
 
+    <view class="build-tag">BUILD 63240c5</view>
+
     <view class="hud">
       <view class="status">{{ statusText }} | {{ debugText }}</view>
       <view v-if="recording" class="timer">{{ formattedTimer }}</view>
@@ -213,6 +215,7 @@ export default {
 .preview { position: absolute; inset: 0; width: 100vw; height: 100vh; }
 .native-host { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .trail-canvas { position: absolute; inset: 0; width: 100vw; height: 100vh; z-index: 8; pointer-events: none; }
+.build-tag { position: absolute; top: 8rpx; left: 8rpx; z-index: 20; color: #00ff66; background: rgba(0,0,0,.55); font-size: 24rpx; padding: 6rpx 10rpx; border-radius: 8rpx; }
 .hud { position: absolute; top: 56rpx; left: 32rpx; right: 32rpx; z-index: 10; display: flex; justify-content: space-between; align-items: center; }
 .status { color: #fff; font-size: 28rpx; }
 .timer { color: #FFD400; font-size: 30rpx; font-weight: 700; }
