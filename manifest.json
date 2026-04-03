@@ -1,27 +1,25 @@
 {
-  "name": "PickleballCamera",
-  "appid": "__UNI__PICKLEBALLCAM",
-  "description": "iOS-only pickleball camera app",
+  "name": "PickleballTrailCamera",
+  "appid": "__UNI__PICKLEBALLTRAIL",
+  "description": "Pickleball trail camera (iOS only)",
   "versionName": "1.0.0",
   "versionCode": "100",
+  "transformPx": false,
   "app-plus": {
+    "usingComponents": true,
     "distribute": {
       "ios": {
         "dSYMs": false,
         "idfa": false,
         "capabilities": {
-          "push": false
-        },
-        "privacyDescription": {
-          "NSCameraUsageDescription": "Allow camera access to capture photos and videos.",
-          "NSMicrophoneUsageDescription": "Allow microphone access to record video audio.",
-          "NSPhotoLibraryAddUsageDescription": "Allow Photos access to save captured photos and videos automatically.",
-          "NSPhotoLibraryUsageDescription": "Allow Photos access to save captured photos and videos automatically."
+          "camera": true,
+          "microphone": true,
+          "photoLibrary": true
         }
+      },
+      "android": {
+        "permissions": []
       }
-    },
-    "modules": {
-      "PickleballTracker": {}
     }
   }
 }

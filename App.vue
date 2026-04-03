@@ -7,10 +7,5 @@ export default {
 </script>
 
 <style>
-page {
-  height: 100%;
-  width: 100%;
-  background-color: #000;
-  color: #fff;
-}
+page { background: #000; color: #fff; }
 </style>

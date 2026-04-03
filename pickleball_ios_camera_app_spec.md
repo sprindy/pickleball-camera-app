@@ -7,15 +7,12 @@
 
 ### 1.2 Goal
 Build a very simple iOS camera app using **uni-app** that can:
-- match the **iOS Camera app UI and interaction style** as closely as practical for v1
-- provide exactly two capture modes: **Photo** and **Video**
-- use interaction patterns that feel the same as the iOS Camera app for switching modes and capturing media
-- take photos
 - record video
+- take photos
+- show a minimal camera UI
 - while recording video, detect a **pickleball** entering the camera view
 - track the ball’s motion over time
 - draw a **yellow trajectory trail** following the ball
-- save photos and videos to the **iOS Photos album by default**
 - save the recorded video with the trajectory overlay visible in playback/export
 
 This document is optimized so an AI coding agent can implement the app with minimal ambiguity.
@@ -32,15 +29,13 @@ This document is optimized so an AI coding agent can implement the app with mini
 - Coaches or hobby users who want a fun visual trail of the ball in recorded video
 
 ### 1.5 Core User Stories
-1. As a user, I want to open the app and immediately see a camera interface that feels like the iOS Camera app.
-2. As a user, I want to switch between **Photo** and **Video** modes like in the iOS Camera app.
-3. As a user, I want the shutter and recording interactions to behave like the iOS Camera app.
-4. As a user, I want captured photos to be saved to the Photos album by default.
-5. As a user, I want recorded videos to be saved to the Photos album by default.
-6. As a user, while video is recording, I want the app to detect a pickleball when it flies into frame.
-7. As a user, I want the ball’s recent trajectory to be drawn behind it in **yellow**.
-8. As a user, I want the saved video to include the visible yellow trail overlay.
-9. As a user, I do not want complex controls like zoom, filters, editing, or account features.
+1. As a user, I want to open the app and immediately see the camera preview.
+2. As a user, I want one button to take a photo.
+3. As a user, I want one button to start and stop video recording.
+4. As a user, while video is recording, I want the app to detect a pickleball when it flies into frame.
+5. As a user, I want the ball’s recent trajectory to be drawn behind it in **yellow**.
+6. As a user, I want the saved video to include the visible yellow trail overlay.
+7. As a user, I do not want complex controls like zoom, filters, editing, or account features.
 
 ### 1.6 Non-Goals for v1
 Do **not** include:
@@ -54,21 +49,8 @@ Do **not** include:
 - Android support
 - social sharing features
 - advanced physics analysis or bounce prediction
-- custom camera interaction patterns that differ from the iOS Camera app unless technically necessary
 
 ### 1.7 Functional Requirements
-
-#### FR-0 Camera UI and Mode Structure
-- The main camera screen should visually and behaviorally resemble the **iOS Camera app** as closely as practical.
-- There must be exactly **two modes** on the main capture interface:
-  - `Photo`
-  - `Video`
-- Mode switching interaction should follow the iOS Camera app pattern as closely as practical in uni-app.
-- The active mode must be visually clear.
-- The capture button behavior must match the active mode:
-  - in `Photo` mode, tapping the shutter captures a still image
-  - in `Video` mode, tapping the record control starts/stops video recording
-- The app should avoid adding extra visible controls that are not necessary for v1.
 
 #### FR-1 Camera Preview
 - App launches directly into a live camera preview.
@@ -77,20 +59,16 @@ Do **not** include:
 - No zoom controls.
 
 #### FR-2 Photo Capture
-- User can enter `Photo` mode and tap the shutter button to capture a still image.
-- The photo capture interaction should feel like the iOS Camera app.
-- The captured photo is saved to the app’s local storage first if needed by implementation, but must be saved to the **iOS Photos album by default**.
-- If saving to Photos fails, the app should preserve the local copy and notify the user.
+- User can tap a photo button to capture a still image.
+- The captured photo is saved to the app’s local storage first.
+- Optional: also save to Photos if permission is granted.
 - No trajectory tracking is required for still photos in v1.
 
 #### FR-3 Video Recording
-- User can enter `Video` mode and tap the record control to start recording.
+- User can tap the video button to start recording.
 - User can tap again to stop recording.
-- The recording interaction and visual state should feel like the iOS Camera app.
 - Recording state must be visually obvious.
 - While recording, pickleball detection/tracking runs in near real time.
-- The finished video must be saved to the **iOS Photos album by default**.
-- If saving to Photos fails, the app should preserve the exported local file and notify the user.
 
 #### FR-4 Pickleball Detection
 - System attempts to detect a pickleball in video frames while recording.
@@ -125,15 +103,13 @@ Do **not** include:
 
 ### 1.8 UX Requirements
 - Very simple UI.
-- The camera interface should mimic the **iOS Camera app** layout and interaction style as closely as practical.
-- The main mode selector should show exactly two modes:
-  - `PHOTO`
-  - `VIDEO`
-- The shutter/record control should behave like the iOS Camera app based on the selected mode.
-- The active recording state must be visually obvious.
+- Maximum 3 main controls on camera screen:
+  - capture photo button
+  - start/stop recording button
+  - optional gallery/review entry
+- Recording button must show active state.
 - No zoom UI.
-- Do not add unnecessary extra controls.
-- Save behavior should feel automatic and native: captured photos and finished videos should go to the Photos album by default.
+- No mode carousel required; simple photo and video buttons are enough.
 
 ### 1.9 Performance Requirements
 - Camera preview should feel responsive.
@@ -152,14 +128,11 @@ Do **not** include:
 ### 1.11 Permissions
 - Camera permission required.
 - Microphone permission required for video recording with audio.
-- Photo library permission required because photos and videos are saved to the iOS Photos album by default.
+- Photo library permission optional, only if saving/exporting to Photos.
 
 ### 1.12 Success Criteria for v1
 - User can capture a photo.
 - User can record a video.
-- The camera UI and interaction feel substantially like the iOS Camera app for Photo and Video modes.
-- Captured photos are saved to the Photos album by default.
-- Recorded videos are saved to the Photos album by default.
 - During a recording, when a pickleball clearly enters frame, the app detects and tracks it for at least a short sequence.
 - The saved video visibly includes a yellow trajectory behind the ball.
 - The app remains stable during normal use.
@@ -170,8 +143,6 @@ Do **not** include:
 
 ### Build This
 - uni-app iOS camera app
-- camera UI modeled after the iOS Camera app
-- exactly two modes: Photo and Video
 - rear camera preview
 - photo capture
 - video recording
@@ -281,26 +252,20 @@ Reason: easier and more reliable than trying to permanently burn overlay directl
 ## 4. Detailed Functional Spec
 
 ### 4.1 Main Camera Screen
-The main camera screen should visually and behaviorally mirror the standard iOS Camera app as closely as practical within product and technical constraints.
-
 #### Elements
 - full-screen camera preview
-- iOS-style mode selector with exactly two modes:
-  - PHOTO
-  - VIDEO
-- iOS-style main capture control area
-- optional thumbnail/review entry consistent with native camera feel
-- overlay layer for yellow trajectory during video recording
+- top area: minimal status text
+- bottom area:
+  - photo button
+  - video record button
+  - optional thumbnail/review button
 
 #### Behavior
 - on launch, request permissions if needed
 - if denied, show permission help state
 - default to rear camera
-- user can switch between PHOTO and VIDEO modes
-- in PHOTO mode, tapping the shutter captures a photo
-- in VIDEO mode, tapping the record control starts/stops recording
-- media should be saved to the iOS Photos album by default
-- pickleball tracking behavior remains unchanged and runs only during video recording
+- photo button captures photo immediately
+- video button toggles recording
 
 ### 4.2 Recording States
 - `idle`
@@ -345,14 +310,14 @@ All points must be stored with enough metadata to map accurately at export time.
 ## 5. Screens
 
 ### 5.1 Camera Screen
-Purpose: live preview and capture with an iOS Camera-like interface.
+Purpose: live preview and capture
 
 **Components**
 - Camera preview surface
-- Overlay layer for yellow trajectory during video recording
-- Mode selector with exactly two modes: PHOTO and VIDEO
-- Main shutter / record control styled and behaving like the iOS Camera app
-- Minimal status label only when needed
+- Overlay layer for yellow trajectory
+- Photo button
+- Record button
+- Status label
 
 ### 5.2 Media Review Screen
 Purpose: view last captured photo or processed video
@@ -376,7 +341,7 @@ Purpose: help user grant camera/mic access
 ### Permission Prompts
 - Camera: `Allow camera access to capture photos and videos.`
 - Microphone: `Allow microphone access to record video audio.`
-- Photos: `Allow Photos access to save captured photos and videos automatically.`
+- Photos optional: `Allow Photos access to save captured media.`
 
 ### Status Messages
 - `Ready`
@@ -549,9 +514,8 @@ Recommended default:
 
 ### 11.1 Photo Flow
 - capture photo
-- save local file if needed by implementation
-- save photo to iOS Photos album by default
-- return file path / asset reference to uni-app
+- save local file
+- return file path to uni-app
 - show review screen
 
 ### 11.2 Video Flow
@@ -559,8 +523,7 @@ Recommended default:
 - record tracking data during capture
 - stop recording
 - process/export composited video with yellow trail
-- save output video to iOS Photos album by default
-- return output file path / asset reference
+- return output file path
 - show review screen
 
 ### 11.3 File Naming
@@ -577,7 +540,6 @@ Recommended default:
 - microphone permission denied
 - recording start failure
 - export failure
-- saving to Photos album failure
 - no ball detected during recording
 - tracking too unstable
 
@@ -586,7 +548,8 @@ Recommended default:
 - do not crash
 - if no ball detected, still save plain recorded video
 - if overlay export fails, preserve raw video
-- if saving to Photos fails, preserve the local media file and notify the user
+
+---
 
 ## 13. Acceptance Criteria
 
@@ -596,15 +559,15 @@ Recommended default:
 - then the rear camera preview is shown.
 
 ### AC-2 Photo Capture
-- Given the user is on the camera screen in PHOTO mode,
-- when the shutter button is tapped,
-- then a photo is captured and saved to the Photos album by default.
+- Given the user is on the camera screen,
+- when the photo button is tapped,
+- then a photo is captured and shown in review.
 
 ### AC-3 Start/Stop Recording
-- Given the user is on the camera screen in VIDEO mode,
-- when the record control is tapped,
+- Given the user is on the camera screen,
+- when the video button is tapped,
 - then recording starts and recording UI is visible.
-- When tapped again, recording stops and the output video is saved to the Photos album by default.
+- When tapped again, recording stops.
 
 ### AC-4 Ball Tracking
 - Given recording is active and a visible pickleball crosses the frame,
@@ -623,10 +586,6 @@ Recommended default:
 
 ### AC-7 No Zoom
 - On the camera screen, no zoom in/out functionality is available.
-
-### AC-8 iOS Camera-like Interaction
-- The app provides exactly two modes: PHOTO and VIDEO.
-- The camera UI and interaction model substantially match the iOS Camera app for these two modes.
 
 ---
 
@@ -662,7 +621,6 @@ Recommended default:
 ### Important Guidance
 - Prefer a native iOS plugin for detection/tracking/export rather than trying to do all frame processing in JavaScript.
 - Keep uni-app responsible mainly for UI and flow.
-- Replicate the iOS Camera app interaction model for PHOTO and VIDEO modes as closely as practical, but keep the pickleball tracking logic unchanged from the original spec.
 - First implement a working plain camera app.
 - Then add native recording.
 - Then add tracking.
@@ -706,7 +664,7 @@ For v1, assume:
 
 Use this brief directly with a coding model:
 
-> Build an iOS-only camera app using uni-app. The app UI and interaction should match the iOS Camera app as closely as practical. The app must have exactly two modes: PHOTO and VIDEO. It should follow iOS system auto-rotation behavior. In PHOTO mode, tapping the shutter captures a photo. In VIDEO mode, tapping the record control starts and stops recording. Photos and videos must be saved to the iOS Photos album by default. Do not implement zoom. While video recording is active, the app must detect and track a pickleball when it flies into the camera view. Draw a yellow trajectory trail behind the ball in real time, and ensure the saved output video includes the same yellow trajectory overlay. Use a native iOS plugin/module for camera frame access, tracking, overlay rendering, saving to Photos, and export compositing, while keeping uni-app for UI, routing, and permissions. Use yellow color #FFD400 for the trajectory. If no ball is detected, still save the recorded video without failing.
+> Build an iOS-only camera app using uni-app. The app must have a very simple UI with a live rear camera preview, one photo capture button, and one video record toggle button. Do not implement zoom. While video recording is active, the app must detect and track a pickleball when it flies into the camera view. Draw a yellow trajectory trail behind the ball in real time, and ensure the saved output video includes the same yellow trajectory overlay. Use a native iOS plugin/module for camera frame access, tracking, overlay rendering, and export compositing, while keeping uni-app for UI, routing, and permissions. Use yellow color #FFD400 for the trajectory. If no ball is detected, still save the recorded video without failing.
 
 ---
 
@@ -750,14 +708,12 @@ Use this brief directly with a coding model:
 ---
 
 ## 20. Final v1 Decision Summary
-This app should be treated as a **minimal iOS Camera-like app with a native sports-object tracking extension**. The simplest path is:
+This app should be treated as a **minimal camera app with a native sports-object tracking extension**. The simplest path is:
 - uni-app for UI
 - iOS native plugin for heavy camera/tracking work
 - post-record export composition for reliable final overlay video
 - standard normal camera mode, not portrait mode
 - follow iOS system auto-rotation behavior rather than locking to portrait-only
-- match the iOS Camera app interaction model as closely as practical for PHOTO and VIDEO modes
-- save photos and videos to the iOS Photos album by default
 
 That is the recommended implementation path for an AI coding agent.
 
